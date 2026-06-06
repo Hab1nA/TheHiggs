@@ -48,6 +48,25 @@ next-env.d.ts
 
 # IDE
 .idea/
+.vscode/settings.json
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# AI / LLM artifacts
+*.prompt.md.tmp
+*.generated.*
+
+# CopilotKit debug
+.copilotkit/
+
+# Dev sessions
+/tmp/
+/scratch/
 .vscode/
 *.swp
 *.swo

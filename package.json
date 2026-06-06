@@ -1,0 +1,34 @@
+{
+  "name": "thehiggs",
+  "version": "0.3.0",
+  "private": true,
+  "description": "AI-UI Co-Execution Runtime — LLM 驻留在自己生成的 UI 中，形成 AI-UI 共执行循环",
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "ai": "^4.3.0",
+    "zod": "^3.24.0",
+    "@ai-sdk/openai": "^1.3.0",
+    "@copilotkit/react-core": "^1.40.0",
+    "@copilotkit/react-ui": "^1.40.0",
+    "next": "^15.3.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "^5.7.0",
+    "tailwindcss": "^4.1.0",
+    "@tailwindcss/postcss": "^4.1.0",
+    "eslint": "^9.0.0",
+    "eslint-config-next": "^15.3.0",
+    "@eslint/eslintrc": "^3.0.0"
+  }
+}
