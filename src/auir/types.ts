@@ -269,6 +269,30 @@ export type TextNode = BaseNode & {
   text: string;
 };
 
+/** 图片节点 — 支持 data URL 或远程代理 URL */
+export type ImageNode = BaseNode & {
+  type: "image";
+  /** 图片 URL（data: URL 或经服务端代理的安全 URL） */
+  src: string;
+  /** 替代文本 */
+  alt?: string;
+  /** 显示宽度策略 */
+  width?: "auto" | "full" | "content" | "1/2" | "1/3" | "2/3" | "1/4" | "3/4";
+  /** 显示高度策略 */
+  height?: "auto" | "content" | "1/2" | "1/3";
+  /** 图片适配模式 */
+  fit?: "cover" | "contain" | "fill" | "none";
+  /** 圆角风格 */
+  radius?: "none" | "sm" | "md" | "lg" | "full";
+  /** 图片标题（显示在图片下方） */
+  caption?: string;
+  /** 图片来源出处 */
+  source?: {
+    name: string;
+    url?: string;
+  };
+};
+
 export type MetricNode = BaseNode & {
   type: "metric";
   label: string;
@@ -699,6 +723,7 @@ export type UINode =
   | CodeBlockNode
   | ChartBarNode
   | ChartLineNode
+  | ImageNode
   // v0.3.1 — Extended Nodes
   | CarouselNode
   | BadgeNode

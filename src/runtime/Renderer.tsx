@@ -193,6 +193,7 @@ export default function Renderer({
     );
   if (t === "heading") return <HeadingRender n={n} />;
   if (t === "text") return <TextRender n={n} />;
+  if (t === "image") return <ImageRender n={n} />;
   if (t === "table") return <TableRender n={n} />;
   if (t === "metric") return <MetricRender n={n} />;
   if (t === "alert") return <AlertRender n={n} />;
@@ -2201,3 +2202,115 @@ function StepsRender({ n }: RSimple) {
     </div>
   );
 }
+
+// -----------------------------------------------------------
+// Image Render — 渲染 image 节点
+// -----------------------------------------------------------
+
+/* eslint-disable @next/next/no-img-element -- 通用 UI 渲染器，不使用 next/image 优化 */
+
+/** 宽度 token → Tailwind class */
+const IMG_WIDTH_CLASS: Record<string, string> = {
+  auto: "w-auto",
+  full: "w-full",
+  content: "max-w-max",
+  "1/2": "w-1/2",
+  "1/3": "w-1/3",
+  "2/3": "w-2/3",
+  "1/4": "w-1/4",
+  "3/4": "w-3/4",
+};
+
+/** 高度 token → Tailwind class */
+const IMG_HEIGHT_CLASS: Record<string, string> = {
+  auto: "h-auto",
+  content: "max-h-max",
+  "1/2": "h-48",
+  "1/3": "h-32",
+};
+
+/** fit → Tailwind object-fit */
+const IMG_FIT_CLASS: Record<string, string> = {
+  cover: "object-cover",
+  contain: "object-contain",
+  fill: "object-fill",
+  none: "object-none",
+};
+
+/** radius → Tailwind rounded */
+const IMG_RADIUS_CLASS: Record<string, string> = {
+  none: "rounded-none",
+  sm: "rounded-sm",
+  md: "rounded-md",
+  lg: "rounded-lg",
+  full: "rounded-full",
+};
+
+function ImageRender({ n }: { n: Record<string, unknown> }) {
+  const src = String(n.src ?? "");
+  const alt = String(n.alt ?? "");
+  const caption = typeof n.caption === "string" ? n.caption : undefined;
+  const fitClass = IMG_FIT_CLASS[String(n.fit ?? "cover")] ?? "object-cover";
+  const radiusClass =
+    IMG_RADIUS_CLASS[String(n.radius ?? "md")] ?? "rounded-md";
+  const widthClass = IMG_WIDTH_CLASS[String(n.width ?? "full")] ?? "w-full";
+  const heightClass = IMG_HEIGHT_CLASS[String(n.height ?? "auto")] ?? "h-auto";
+  const source = n.source as { name?: string; url?: string } | undefined;
+
+  // 安全校验：只允许 data: URLs 和 https: URLs
+  const isValidSrc =
+    src.startsWith("data:") ||
+    src.startsWith("https://") ||
+    src.startsWith("/");
+
+  return (
+    <figure className={`${widthClass} overflow-hidden`}>
+      {isValidSrc ? (
+        <img
+          src={src}
+          alt={alt}
+          className={`${widthClass} ${heightClass} ${fitClass} ${radiusClass} bg-neutral-800`}
+          loading="lazy"
+          onError={(e) => {
+            const target = e.currentTarget;
+            target.style.display = "none";
+            const placeholder = target.nextElementSibling as HTMLElement | null;
+            if (placeholder) placeholder.style.display = "flex";
+          }}
+        />
+      ) : null}
+      <div
+        className={`${widthClass} ${heightClass} ${radiusClass} bg-neutral-800 border border-neutral-700 items-center justify-center min-h-[120px]`}
+        style={{ display: isValidSrc ? "none" : "flex" }}
+      >
+        <span className="text-neutral-500 text-sm">
+          {isValidSrc ? "" : src ? "⚠️ 不安全的图片来源" : "🖼️ 无图片"}
+        </span>
+      </div>
+      {caption ? (
+        <figcaption className="mt-2 text-xs text-neutral-400 text-center">
+          {caption}
+        </figcaption>
+      ) : null}
+      {source?.name ? (
+        <div className="mt-1 text-[10px] text-neutral-600 text-center">
+          来源:{" "}
+          {source.url ? (
+            <a
+              href={source.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-neutral-400 underline"
+            >
+              {source.name}
+            </a>
+          ) : (
+            source.name
+          )}
+        </div>
+      ) : null}
+    </figure>
+  );
+}
+
+/* eslint-enable @next/next/no-img-element */

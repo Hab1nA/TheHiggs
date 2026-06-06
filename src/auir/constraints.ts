@@ -34,6 +34,7 @@ export const ALLOWED_COMPONENTS = [
   "code_block",
   "chart_bar",
   "chart_line",
+  "image",
   // v0.3.1 — Extended Components
   "carousel",
   "badge",

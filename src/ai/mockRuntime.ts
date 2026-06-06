@@ -5,7 +5,7 @@
 import { exampleRocketCycleResponse } from "@/auir/examples";
 import { createLauncherState } from "@/auir/fallback";
 import type { AUIRRequest, AUIRResponse, AUIRState } from "@/auir/types";
-import { executeTool } from "./tools";
+import { executeToolSync } from "./tools";
 
 /** Mock AI Runtime：根据事件类型生成演示响应 */
 export async function mockGenerateNextAUIRState(
@@ -118,7 +118,7 @@ function handleCalculatePerformance(
   );
 
   // Estimate using safeCalculator-style logic
-  const toolResult = executeTool("estimateRocketCycle", {
+  const toolResult = executeToolSync("estimateRocketCycle", {
     chamberPressureMPa: Pc,
     mixtureRatio: MR,
     expansionRatio: eps,
@@ -201,7 +201,7 @@ function handleCompareCycles(
   const cycles = ["gas_generator", "expander", "staged_combustion"];
   const labels = ["Gas Generator", "Expander", "Staged Combustion"];
   const results = cycles.map((cycle) => {
-    const r = executeTool("estimateRocketCycle", {
+    const r = executeToolSync("estimateRocketCycle", {
       chamberPressureMPa: Pc,
       mixtureRatio: MR,
       expansionRatio: eps,

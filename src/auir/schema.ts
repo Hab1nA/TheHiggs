@@ -194,6 +194,26 @@ const textNodeSchema = z.object({
   text: z.string(),
 });
 
+const imageNodeSchema = z.object({
+  ...baseNodeExtras,
+  type: z.literal("image"),
+  src: z.string().describe("Image URL (data: URL or server-proxied safe URL)"),
+  alt: z.string().optional(),
+  width: z
+    .enum(["auto", "full", "content", "1/2", "1/3", "2/3", "1/4", "3/4"])
+    .optional(),
+  height: z.enum(["auto", "content", "1/2", "1/3"]).optional(),
+  fit: z.enum(["cover", "contain", "fill", "none"]).optional(),
+  radius: z.enum(["none", "sm", "md", "lg", "full"]).optional(),
+  caption: z.string().optional(),
+  source: z
+    .object({
+      name: z.string(),
+      url: z.string().optional(),
+    })
+    .optional(),
+});
+
 const metricNodeSchema = z.object({
   ...baseNodeExtras,
   type: z.literal("metric"),
@@ -705,6 +725,7 @@ export const uiNodeSchema = z.discriminatedUnion("type", [
   codeBlockNodeSchema,
   chartBarNodeSchema,
   chartLineNodeSchema,
+  imageNodeSchema,
   // v0.3.1 — Extended Nodes
   carouselNodeSchema,
   badgeNodeSchema,
