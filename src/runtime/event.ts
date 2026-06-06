@@ -3,11 +3,11 @@
 // ============================================================
 
 import type {
-    AUIREvent,
-    ButtonNode,
-    ClientSnapshot,
-    LocalUIState,
-    UINode,
+  AUIREvent,
+  ButtonNode,
+  ClientSnapshot,
+  LocalUIState,
+  UINode,
 } from "@/auir/types";
 
 let _eventCounter = 0;
@@ -24,7 +24,7 @@ function ts(): string {
 /** 创建 ClientSnapshot */
 export function createClientSnapshot(
   localState: LocalUIState,
-  currentUI: UINode | null
+  currentUI: UINode | null,
 ): ClientSnapshot {
   return {
     localState,
@@ -33,19 +33,38 @@ export function createClientSnapshot(
 }
 
 /** 创建 app.search 事件 */
-export function createAppSearchEvent(query: string): AUIREvent {
+export function createAppSearchEvent(
+  query: string,
+  opts?: {
+    refine?: boolean;
+    thinking?: boolean;
+    refinedPrompt?: string;
+    refinedContext?: {
+      appKind?: string;
+      appTitle?: string;
+      appDescription?: string;
+      keyFeatures?: string[];
+      suggestedLayout?: string;
+      suggestedComponents?: string[];
+    };
+  },
+): AUIREvent {
   return {
     eventId: createEventId(),
     timestamp: ts(),
     type: "app.search",
     query,
+    refine: opts?.refine,
+    thinking: opts?.thinking,
+    refinedPrompt: opts?.refinedPrompt,
+    refinedContext: opts?.refinedContext,
   };
 }
 
 /** 创建 component.click 事件 */
 export function createComponentClickEvent(
   node: ButtonNode,
-  clientSnapshot?: ClientSnapshot
+  clientSnapshot?: ClientSnapshot,
 ): AUIREvent {
   return {
     eventId: createEventId(),
@@ -71,7 +90,7 @@ export function createComponentCommitEvent(
   binding: string | undefined,
   previousValue: unknown,
   nextValue: unknown,
-  clientSnapshot: ClientSnapshot
+  clientSnapshot: ClientSnapshot,
 ): AUIREvent {
   return {
     eventId: createEventId(),
@@ -94,7 +113,7 @@ export function createComponentCommitEvent(
 /** 创建 runtime.command 事件 */
 export function createRuntimeCommandEvent(
   command: "restart" | "back_to_launcher" | "inspect_state",
-  clientSnapshot?: ClientSnapshot
+  clientSnapshot?: ClientSnapshot,
 ): AUIREvent {
   return {
     eventId: createEventId(),
@@ -110,7 +129,7 @@ export function createTabChangeEvent(
   tabId: string,
   previousTab: string | undefined,
   nextTab: string,
-  clientSnapshot?: ClientSnapshot
+  clientSnapshot?: ClientSnapshot,
 ): AUIREvent {
   return {
     eventId: createEventId(),
@@ -126,7 +145,7 @@ export function createTabChangeEvent(
 export function createModalCloseEvent(
   modalId: string,
   closeIntent: string,
-  clientSnapshot?: ClientSnapshot
+  clientSnapshot?: ClientSnapshot,
 ): AUIREvent {
   return {
     eventId: createEventId(),
@@ -144,7 +163,7 @@ export function createModalCloseEvent(
 /** 收集当前 UI 中所有 binding 的可见值 */
 function collectVisibleBindings(
   node: unknown,
-  localState: LocalUIState
+  localState: LocalUIState,
 ): Record<string, unknown> {
   const result: Record<string, unknown> = {};
   function walk(n: unknown) {
@@ -155,7 +174,7 @@ function collectVisibleBindings(
       result[binding] =
         binding in localState.values
           ? localState.values[binding]
-          : obj.value ?? obj.checked;
+          : (obj.value ?? obj.checked);
     }
     if ("children" in obj && Array.isArray(obj.children)) {
       for (const child of obj.children) walk(child);
@@ -164,7 +183,12 @@ function collectVisibleBindings(
     if ("secondary" in obj) walk(obj.secondary);
     if ("tabs" in obj && Array.isArray(obj.tabs)) {
       for (const tab of obj.tabs) {
-        if (tab && typeof tab === "object" && "children" in tab && Array.isArray(tab.children)) {
+        if (
+          tab &&
+          typeof tab === "object" &&
+          "children" in tab &&
+          Array.isArray(tab.children)
+        ) {
           for (const child of tab.children) walk(child);
         }
       }

@@ -27,6 +27,10 @@ const CONTAINER_TYPES = new Set([
   "tabs",
   "modal",
   "drawer",
+  // v0.3.1 — Extended container types
+  "carousel",
+  "card",
+  "accordion",
 ]);
 
 /** 判断节点是否为布局容器 */

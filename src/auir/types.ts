@@ -414,6 +414,258 @@ export type ChartLineNode = BaseNode & {
 };
 
 // -----------------------------------------------------------
+// Extended Layout Nodes (v0.3.1)
+// -----------------------------------------------------------
+
+/** 轮播容器 — 水平可滚动卡片 */
+export type CarouselNode = BaseNode & {
+  type: "carousel";
+  title?: string;
+  gap?: "none" | "xs" | "sm" | "md" | "lg";
+  /** 每页可见项数 */
+  visibleItems?: 1 | 2 | 3 | 4;
+  children: UINode[];
+};
+
+// -----------------------------------------------------------
+// Extended Content Nodes (v0.3.1)
+// -----------------------------------------------------------
+
+/** 徽标 — 紧凑的状态/数量指示器 */
+export type BadgeNode = BaseNode & {
+  type: "badge";
+  text: string;
+  variant?: "default" | "primary" | "success" | "warning" | "danger" | "info";
+  size?: "sm" | "md" | "lg";
+};
+
+/** 进度条 */
+export type ProgressNode = BaseNode & {
+  type: "progress";
+  label?: string;
+  value: number;
+  max?: number;
+  unit?: string;
+  tone?: "default" | "primary" | "success" | "warning" | "danger";
+};
+
+/** 增强统计卡 — 带趋势指示 */
+export type StatisticNode = BaseNode & {
+  type: "statistic";
+  title: string;
+  value: string | number;
+  prefix?: string;
+  suffix?: string;
+  trend?: "up" | "down" | "stable";
+  trendValue?: string;
+  description?: string;
+};
+
+/** 时间线 */
+export type TimelineNode = BaseNode & {
+  type: "timeline";
+  items: {
+    id: string;
+    title: string;
+    description?: string;
+    timestamp?: string;
+    tone?: "default" | "primary" | "success" | "warning" | "danger";
+    /** 自定义图标首字母（emoji 或单字） */
+    icon?: string;
+  }[];
+};
+
+/** 手风琴 — 可折叠面板组 */
+export type AccordionNode = BaseNode & {
+  type: "accordion";
+  /** 默认展开的面板 index（从 0 开始）；-1 表示全部折叠 */
+  defaultOpenIndex?: number;
+  gap?: "none" | "xs" | "sm" | "md" | "lg";
+  items: {
+    id: string;
+    title: string;
+    children: UINode[];
+  }[];
+};
+
+/** 面包屑导航 */
+export type BreadcrumbNode = BaseNode & {
+  type: "breadcrumb";
+  items: {
+    label: string;
+    href?: string;
+  }[];
+  separator?: "/" | ">" | "›";
+};
+
+/** 标签/标签组 */
+export type TagNode = BaseNode & {
+  type: "tag";
+  text: string;
+  variant?: "default" | "primary" | "success" | "warning" | "danger" | "info";
+  removable?: boolean;
+  size?: "sm" | "md";
+};
+
+/** 列表 — 带可选图标的有序/无序列表 */
+export type ListNode = BaseNode & {
+  type: "list";
+  ordered?: boolean;
+  gap?: "none" | "xs" | "sm" | "md" | "lg";
+  items: {
+    id: string;
+    text: string;
+    description?: string;
+    icon?: string;
+    tone?: "default" | "muted" | "primary" | "success" | "warning" | "danger";
+  }[];
+};
+
+/** 引用块 */
+export type QuoteNode = BaseNode & {
+  type: "quote";
+  text: string;
+  author?: string;
+  source?: string;
+  tone?: "default" | "muted" | "primary";
+};
+
+/** 增强卡片 — 带分区的内容容器 */
+export type CardNode = BaseNode & {
+  type: "card";
+  title?: string;
+  subtitle?: string;
+  /** 可选的顶部图片 URL 或占位描述 */
+  image?: string;
+  /** 可选的底部操作区 */
+  footer?: UINode[];
+  gap?: "none" | "xs" | "sm" | "md" | "lg";
+  children: UINode[];
+};
+
+/** 描述列表 — 键值对展示 */
+export type DescriptionListNode = BaseNode & {
+  type: "description_list";
+  gap?: "none" | "xs" | "sm" | "md" | "lg";
+  layout?: "vertical" | "horizontal";
+  items: {
+    id: string;
+    term: string;
+    description: string;
+  }[];
+};
+
+/** 空状态占位 */
+export type EmptyStateNode = BaseNode & {
+  type: "empty_state";
+  icon?: string;
+  title: string;
+  description?: string;
+  /** 可选的 CTA 按钮 */
+  action?: {
+    label: string;
+    intent: string;
+  };
+};
+
+/** 简易仪表盘 */
+export type GaugeNode = BaseNode & {
+  type: "gauge";
+  title?: string;
+  value: number;
+  min: number;
+  max: number;
+  unit?: string;
+  /** 阈值区间定义 */
+  thresholds?: {
+    color: "success" | "warning" | "danger";
+    min: number;
+    max: number;
+    label?: string;
+  }[];
+  size?: "sm" | "md" | "lg";
+};
+
+/** KPI 卡片 — 大数值展示 + 趋势 */
+export type KPICardNode = BaseNode & {
+  type: "kpi_card";
+  title: string;
+  value: string | number;
+  unit?: string;
+  trend?: "up" | "down" | "stable";
+  trendValue?: string;
+  description?: string;
+  tone?: "default" | "primary" | "success" | "warning" | "danger";
+};
+
+/** 简易热力图 */
+export type HeatmapNode = BaseNode & {
+  type: "heatmap";
+  title?: string;
+  xLabels?: string[];
+  yLabels?: string[];
+  /** 值范围 0-100 的二维网格 */
+  data: number[][];
+  /** 色阶 */
+  colorScale?: "blue" | "green" | "red" | "yellow" | "purple";
+  cellSize?: "sm" | "md" | "lg";
+};
+
+/** 颜色色板 */
+export type ColorSwatchNode = BaseNode & {
+  type: "color_swatch";
+  title?: string;
+  colors: {
+    value: string;
+    label?: string;
+  }[];
+  size?: "sm" | "md" | "lg";
+};
+
+/** 雷达图 — 多维度对比 */
+export type RadarChartNode = BaseNode & {
+  type: "radar_chart";
+  title?: string;
+  /** 维度标签 */
+  axes: string[];
+  /** 多组数据 */
+  series: {
+    name: string;
+    values: number[];
+    color?: string;
+  }[];
+  maxValue?: number;
+};
+
+/** 键值统计组 — 多个 metric 的紧凑排列 */
+export type StatGroupNode = BaseNode & {
+  type: "stat_group";
+  gap?: "none" | "xs" | "sm" | "md" | "lg";
+  columns?: 2 | 3 | 4;
+  items: {
+    id: string;
+    label: string;
+    value: string | number;
+    unit?: string;
+    trend?: "up" | "down" | "stable";
+    trendValue?: string;
+  }[];
+};
+
+/** 步骤条 — 流程/向导进度指示 */
+export type StepsNode = BaseNode & {
+  type: "steps";
+  current: number;
+  direction?: "horizontal" | "vertical";
+  items: {
+    id: string;
+    title: string;
+    description?: string;
+    status?: "wait" | "process" | "finish" | "error";
+  }[];
+};
+
+// -----------------------------------------------------------
 // UINode Union
 // -----------------------------------------------------------
 
@@ -446,7 +698,28 @@ export type UINode =
   | DrawerNode
   | CodeBlockNode
   | ChartBarNode
-  | ChartLineNode;
+  | ChartLineNode
+  // v0.3.1 — Extended Nodes
+  | CarouselNode
+  | BadgeNode
+  | ProgressNode
+  | StatisticNode
+  | TimelineNode
+  | AccordionNode
+  | BreadcrumbNode
+  | TagNode
+  | ListNode
+  | QuoteNode
+  | CardNode
+  | DescriptionListNode
+  | EmptyStateNode
+  | GaugeNode
+  | KPICardNode
+  | HeatmapNode
+  | ColorSwatchNode
+  | RadarChartNode
+  | StatGroupNode
+  | StepsNode;
 
 // -----------------------------------------------------------
 // Event 协议
@@ -483,6 +756,21 @@ export type AppSearchEvent = {
   timestamp: string;
   type: "app.search";
   query: string;
+  /** 是否启用 AI Prompt Refine Mode（先细化再生成） */
+  refine?: boolean;
+  /** 是否启用 DeepSeek Thinking Mode（思维链推理） */
+  thinking?: boolean;
+  /** AI 细化后的详细提示词（由 refine 步骤填入） */
+  refinedPrompt?: string;
+  /** 细化结果的补充上下文 */
+  refinedContext?: {
+    appKind?: string;
+    appTitle?: string;
+    appDescription?: string;
+    keyFeatures?: string[];
+    suggestedLayout?: string;
+    suggestedComponents?: string[];
+  };
 };
 
 export type ComponentClickEvent = {

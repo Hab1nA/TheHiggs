@@ -16,15 +16,63 @@ export default function SearchLauncher({
   disabled?: boolean;
 }) {
   const [query, setQuery] = useState("");
+  const [refineMode, setRefineMode] = useState(false);
+  const [thinkingMode, setThinkingMode] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [refining, setRefining] = useState(false);
 
   const handleSubmit = useCallback(
-    (e: FormEvent) => {
+    async (e: FormEvent) => {
       e.preventDefault();
       const trimmed = query.trim();
-      if (!trimmed || disabled) return;
-      onSearch(createAppSearchEvent(trimmed));
+      if (!trimmed || disabled || refining) return;
+
+      if (refineMode) {
+        // Two-step: refine first, then search
+        setRefining(true);
+        try {
+          const res = await fetch("/api/refine", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ query: trimmed }),
+          });
+          if (!res.ok) {
+            console.error("[SearchLauncher] Refine API error:", res.status);
+            onSearch(createAppSearchEvent(trimmed, { thinking: thinkingMode }));
+            return;
+          }
+          const data = await res.json();
+          if (data.ok) {
+            onSearch(
+              createAppSearchEvent(trimmed, {
+                refine: true,
+                thinking: thinkingMode,
+                refinedPrompt: data.refinedPrompt,
+                refinedContext: {
+                  appKind: data.appKind,
+                  appTitle: data.appTitle,
+                  appDescription: data.appDescription,
+                  keyFeatures: data.keyFeatures,
+                  suggestedLayout: data.suggestedLayout,
+                  suggestedComponents: data.suggestedComponents,
+                },
+              }),
+            );
+          } else {
+            console.error("[SearchLauncher] Refine failed:", data.error);
+            onSearch(createAppSearchEvent(trimmed, { thinking: thinkingMode }));
+          }
+        } catch (err) {
+          console.error("[SearchLauncher] Refine fetch error:", err);
+          onSearch(createAppSearchEvent(trimmed, { thinking: thinkingMode }));
+        } finally {
+          setRefining(false);
+        }
+      } else {
+        onSearch(createAppSearchEvent(trimmed, { thinking: thinkingMode }));
+      }
     },
-    [query, disabled, onSearch]
+    [query, disabled, refineMode, thinkingMode, refining, onSearch],
   );
 
   return (
@@ -32,31 +80,234 @@ export default function SearchLauncher({
       <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
         TheHiggs
       </h1>
-      <p className="text-lg text-neutral-400 mb-8">
+      <div className="flex gap-2 mb-3">
+        <span className="inline-flex items-center rounded-full border border-blue-700 bg-blue-950/50 px-2 py-0.5 text-[10px] font-medium text-blue-300">
+          v0.3.1
+        </span>
+        <span className="inline-flex items-center rounded-full border border-green-700 bg-green-950/50 px-2 py-0.5 text-[10px] font-medium text-green-300">
+          49 Components
+        </span>
+      </div>
+      <p className="text-lg text-neutral-400 mb-2">
         AI-UI Co-Execution Runtime
       </p>
       <p className="text-sm text-neutral-500 mb-6 max-w-md text-center">
-        AI 驻留在自己生成的 UI 中。描述你想要的应用，AI 将为你构建一个语义交互界面。
+        AI 驻留在自己生成的 UI 中。描述你想要的应用，AI
+        将为你构建一个语义交互界面。
       </p>
+
+      {/* Settings button */}
+      <div className="relative mb-4">
+        <button
+          type="button"
+          onClick={() => setShowSettings(!showSettings)}
+          className={`p-2 rounded-lg border transition-colors ${
+            refineMode || thinkingMode
+              ? "border-purple-600 bg-purple-950/40 text-purple-300"
+              : "border-neutral-800 bg-neutral-900/50 text-neutral-500 hover:text-neutral-300 hover:border-neutral-700"
+          }`}
+          title="Settings"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+          </svg>
+        </button>
+
+        {/* Settings dropdown */}
+        {showSettings && (
+          <div className="absolute top-full mt-2 right-0 w-72 rounded-xl border border-neutral-700 bg-neutral-900 shadow-2xl p-4 z-50">
+            <h3 className="text-sm font-semibold text-neutral-200 mb-3">
+              ⚙️ Settings
+            </h3>
+
+            {/* Refine Mode toggle */}
+            <div className="flex items-center justify-between mb-2">
+              <div>
+                <p className="text-sm text-neutral-300 font-medium">
+                  🤖 AI Refine Mode
+                </p>
+                <p className="text-[11px] text-neutral-500 mt-0.5">
+                  将简短输入先细化为详细提示词再生成页面
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={refineMode}
+                onClick={() => setRefineMode(!refineMode)}
+                className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                  refineMode ? "bg-purple-600" : "bg-neutral-700"
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                    refineMode ? "translate-x-4" : "translate-x-0"
+                  }`}
+                />
+              </button>
+            </div>
+
+            {refineMode && (
+              <p className="text-[11px] text-purple-400 mt-2 leading-relaxed">
+                ✨ 开启后，输入&ldquo;计算器&rdquo;等简短描述，AI
+                会先将其扩充为包含布局、组件、交互细节的完整规范，
+                再基于细化后的规范生成更丰富的界面。
+              </p>
+            )}
+
+            {/* Divider */}
+            <div className="my-3 border-t border-neutral-800" />
+
+            {/* Thinking Mode toggle */}
+            <div className="flex items-center justify-between mb-2">
+              <div>
+                <p className="text-sm text-neutral-300 font-medium">
+                  🧠 Thinking Mode
+                </p>
+                <p className="text-[11px] text-neutral-500 mt-0.5">
+                  启用 DeepSeek 思维链推理，生成结果更深入
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={thinkingMode}
+                onClick={() => setThinkingMode(!thinkingMode)}
+                className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                  thinkingMode ? "bg-amber-600" : "bg-neutral-700"
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                    thinkingMode ? "translate-x-4" : "translate-x-0"
+                  }`}
+                />
+              </button>
+            </div>
+
+            {thinkingMode && (
+              <p className="text-[11px] text-amber-400 mt-2 leading-relaxed">
+                🧠 开启后，每次生成 UI 时 AI
+                都会先进行深度思考推理，生成质量更高但速度稍慢。
+                适合需要复杂布局和精细交互的场景。
+              </p>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setShowSettings(false)}
+              className="mt-3 w-full py-1.5 text-xs rounded-lg bg-neutral-800 border border-neutral-700 text-neutral-400 hover:text-neutral-200 transition-colors"
+            >
+              Close
+            </button>
+          </div>
+        )}
+      </div>
+
       <form onSubmit={handleSubmit} className="w-full max-w-xl">
         <input
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="描述你想要的应用，例如：做一个火箭发动机循环参数分析工具..."
-          disabled={disabled}
+          disabled={disabled || refining}
           className="w-full px-5 py-4 rounded-xl border border-neutral-700 bg-neutral-900 text-lg text-neutral-100 placeholder-neutral-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
         />
         <div className="mt-3 text-center">
           <button
             type="submit"
-            disabled={disabled || !query.trim()}
-            className="px-6 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-neutral-700 disabled:text-neutral-500 text-white rounded-lg text-sm font-medium transition-colors"
+            disabled={disabled || refining || !query.trim()}
+            className={`px-6 py-2 rounded-lg text-sm font-medium transition-colors ${
+              refining
+                ? "bg-purple-600 text-white cursor-wait"
+                : refineMode
+                  ? "bg-purple-600 hover:bg-purple-500 disabled:bg-neutral-700 disabled:text-neutral-500 text-white"
+                  : thinkingMode
+                    ? "bg-amber-600 hover:bg-amber-500 disabled:bg-neutral-700 disabled:text-neutral-500 text-white"
+                    : "bg-blue-600 hover:bg-blue-500 disabled:bg-neutral-700 disabled:text-neutral-500 text-white"
+            }`}
           >
-            Launch
+            {refining ? (
+              <span className="flex items-center gap-2">
+                <svg
+                  className="animate-spin h-3.5 w-3.5"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                  />
+                </svg>
+                Refining...
+              </span>
+            ) : refineMode ? (
+              "✨ Refine & Launch"
+            ) : thinkingMode ? (
+              "🧠 Think & Launch"
+            ) : (
+              "Launch"
+            )}
           </button>
         </div>
       </form>
+      <div className="mt-8 max-w-xl w-full">
+        <p className="text-xs text-neutral-600 mb-3 text-center">
+          Try these examples
+        </p>
+        <div className="flex flex-wrap gap-2 justify-center">
+          {[
+            {
+              label: "📊 数据看板",
+              query: "Dashboard with revenue metrics and user analytics",
+            },
+            {
+              label: "📋 项目管理",
+              query: "Project tracker with milestones and timeline",
+            },
+            { label: "💪 健康追踪", query: "Health & fitness tracker" },
+            { label: "🎨 组件展示", query: "Showcase all components demo" },
+            {
+              label: "📈 转化分析",
+              query: "Conversion funnel analytics with heatmaps",
+            },
+            { label: "🚀 火箭引擎", query: "Rocket engine cycle analyzer" },
+          ].map((ex) => (
+            <button
+              key={ex.label}
+              type="button"
+              disabled={disabled || refining}
+              onClick={() => {
+                setQuery(ex.query);
+              }}
+              className="px-3 py-1.5 rounded-lg border border-neutral-800 bg-neutral-900/50 hover:bg-neutral-800 text-xs text-neutral-400 hover:text-neutral-200 transition-colors"
+            >
+              {ex.label}
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

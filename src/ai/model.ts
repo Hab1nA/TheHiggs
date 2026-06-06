@@ -5,17 +5,13 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import type { LanguageModelV1 } from "ai";
 
-/** DeepSeek API 的 OpenAI 兼容 Provider */
-function getDeepSeekProvider() {
-  const thinkingType = resolveThinkingMode();
+/** 构建注入 thinking 参数的 fetch 包装器 */
+function buildThinkingFetch(
+  thinkingType: string | null,
+): typeof globalThis.fetch {
   const originalFetch = globalThis.fetch;
 
-  // Inject thinking parameter for DeepSeek models that support it.
-  // thinking.type = "enabled" enables chain-of-thought reasoning;
-  // thinking.type = "disabled" forces the model to skip the thinking phase,
-  // which improves JSON output reliability and response speed.
-  // See: https://api-docs.deepseek.com/
-  const customFetch: typeof globalThis.fetch = async (input, init) => {
+  return async (input, init) => {
     if (thinkingType && init?.body && typeof init.body === "string") {
       try {
         const body = JSON.parse(init.body);
@@ -27,15 +23,9 @@ function getDeepSeekProvider() {
     }
     return originalFetch(input, init);
   };
-
-  return createOpenAI({
-    apiKey: process.env.OPENAI_API_KEY ?? "",
-    baseURL: process.env.OPENAI_BASE_URL ?? "https://api.deepseek.com",
-    fetch: customFetch,
-  });
 }
 
-/** 解析 DEEPSEEK_THINKING 环境变量 */
+/** 解析 DEEPSEEK_THINKING 环境变量（全局默认） */
 function resolveThinkingMode(): string | null {
   const val = process.env.DEEPSEEK_THINKING?.trim().toLowerCase();
   if (val === "enabled" || val === "true" || val === "1") return "enabled";
@@ -44,10 +34,27 @@ function resolveThinkingMode(): string | null {
   return null; // not set → don't inject, let the model decide
 }
 
-/** 获取当前配置的 AI 模型 */
-export function getModel(): LanguageModelV1 {
+/**
+ * 获取当前配置的 AI 模型。
+ * @param thinking 按请求覆盖 thinking 模式：
+ *   - "enabled"  启用思维链推理
+ *   - "disabled" 禁用思维链（JSON 输出更可靠、更快）
+ *   - undefined   使用 DEEPSEEK_THINKING 环境变量（默认）
+ */
+export function getModel(thinking?: "enabled" | "disabled"): LanguageModelV1 {
   const modelName = process.env.AI_MODEL ?? "deepseek-v4-flash";
-  const provider = getDeepSeekProvider();
+
+  // Per-request thinking overrides env var
+  const thinkingType = thinking ?? resolveThinkingMode();
+
+  const customFetch = buildThinkingFetch(thinkingType);
+
+  const provider = createOpenAI({
+    apiKey: process.env.OPENAI_API_KEY ?? "",
+    baseURL: process.env.OPENAI_BASE_URL ?? "https://api.deepseek.com",
+    fetch: customFetch,
+  });
+
   // Since we use generateObject with mode: 'json' (which maps to
   // response_format: { type: 'json_object' }), ALL DeepSeek models
   // — including thinking models — support JSON mode.

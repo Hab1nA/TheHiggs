@@ -397,6 +397,281 @@ const chartLineNodeSchema = z.object({
 });
 
 // -----------------------------------------------------------
+// v0.3.1 — Extended Node Schemas
+// -----------------------------------------------------------
+
+const carouselNodeSchema = z.object({
+  ...baseNodeExtras,
+  type: z.literal("carousel"),
+  title: z.string().optional(),
+  gap: z.enum(["none", "xs", "sm", "md", "lg"]).optional(),
+  visibleItems: z
+    .union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)])
+    .optional(),
+  children: _uiArray,
+});
+
+const badgeNodeSchema = z.object({
+  ...baseNodeExtras,
+  type: z.literal("badge"),
+  text: z.string(),
+  variant: z
+    .enum(["default", "primary", "success", "warning", "danger", "info"])
+    .optional(),
+  size: z.enum(["sm", "md", "lg"]).optional(),
+});
+
+const progressNodeSchema = z.object({
+  ...baseNodeExtras,
+  type: z.literal("progress"),
+  label: z.string().optional(),
+  value: z.number(),
+  max: z.number().optional(),
+  unit: z.string().optional(),
+  tone: z
+    .enum(["default", "primary", "success", "warning", "danger"])
+    .optional(),
+});
+
+const statisticNodeSchema = z.object({
+  ...baseNodeExtras,
+  type: z.literal("statistic"),
+  title: z.string(),
+  value: z.union([z.string(), z.number()]),
+  prefix: z.string().optional(),
+  suffix: z.string().optional(),
+  trend: z.enum(["up", "down", "stable"]).optional(),
+  trendValue: z.string().optional(),
+  description: z.string().optional(),
+});
+
+const timelineNodeSchema = z.object({
+  ...baseNodeExtras,
+  type: z.literal("timeline"),
+  items: z.array(
+    z.object({
+      id: z.string(),
+      title: z.string(),
+      description: z.string().optional(),
+      timestamp: z.string().optional(),
+      tone: z
+        .enum(["default", "primary", "success", "warning", "danger"])
+        .optional(),
+      icon: z.string().optional(),
+    }),
+  ),
+});
+
+const accordionNodeSchema = z.object({
+  ...baseNodeExtras,
+  type: z.literal("accordion"),
+  defaultOpenIndex: z.number().optional(),
+  gap: z.enum(["none", "xs", "sm", "md", "lg"]).optional(),
+  items: z.array(
+    z.object({
+      id: z.string(),
+      title: z.string(),
+      children: _uiArray,
+    }),
+  ),
+});
+
+const breadcrumbNodeSchema = z.object({
+  ...baseNodeExtras,
+  type: z.literal("breadcrumb"),
+  items: z.array(
+    z.object({
+      label: z.string(),
+      href: z.string().optional(),
+    }),
+  ),
+  separator: z.enum(["/", ">", "›"]).optional(),
+});
+
+const tagNodeSchema = z.object({
+  ...baseNodeExtras,
+  type: z.literal("tag"),
+  text: z.string(),
+  variant: z
+    .enum(["default", "primary", "success", "warning", "danger", "info"])
+    .optional(),
+  removable: z.boolean().optional(),
+  size: z.enum(["sm", "md"]).optional(),
+});
+
+const listNodeSchema = z.object({
+  ...baseNodeExtras,
+  type: z.literal("list"),
+  ordered: z.boolean().optional(),
+  gap: z.enum(["none", "xs", "sm", "md", "lg"]).optional(),
+  items: z.array(
+    z.object({
+      id: z.string(),
+      text: z.string(),
+      description: z.string().optional(),
+      icon: z.string().optional(),
+      tone: z
+        .enum(["default", "muted", "primary", "success", "warning", "danger"])
+        .optional(),
+    }),
+  ),
+});
+
+const quoteNodeSchema = z.object({
+  ...baseNodeExtras,
+  type: z.literal("quote"),
+  text: z.string(),
+  author: z.string().optional(),
+  source: z.string().optional(),
+  tone: z.enum(["default", "muted", "primary"]).optional(),
+});
+
+const cardNodeSchema = z.object({
+  ...baseNodeExtras,
+  type: z.literal("card"),
+  title: z.string().optional(),
+  subtitle: z.string().optional(),
+  image: z.string().optional(),
+  footer: _uiArray.optional(),
+  gap: z.enum(["none", "xs", "sm", "md", "lg"]).optional(),
+  children: _uiArray,
+});
+
+const descriptionListNodeSchema = z.object({
+  ...baseNodeExtras,
+  type: z.literal("description_list"),
+  gap: z.enum(["none", "xs", "sm", "md", "lg"]).optional(),
+  layout: z.enum(["vertical", "horizontal"]).optional(),
+  items: z.array(
+    z.object({
+      id: z.string(),
+      term: z.string(),
+      description: z.string(),
+    }),
+  ),
+});
+
+const emptyStateNodeSchema = z.object({
+  ...baseNodeExtras,
+  type: z.literal("empty_state"),
+  icon: z.string().optional(),
+  title: z.string(),
+  description: z.string().optional(),
+  action: z
+    .object({
+      label: z.string(),
+      intent: z.string(),
+    })
+    .optional(),
+});
+
+const gaugeNodeSchema = z.object({
+  ...baseNodeExtras,
+  type: z.literal("gauge"),
+  title: z.string().optional(),
+  value: z.number(),
+  min: z.number(),
+  max: z.number(),
+  unit: z.string().optional(),
+  thresholds: z
+    .array(
+      z.object({
+        color: z.enum(["success", "warning", "danger"]),
+        min: z.number(),
+        max: z.number(),
+        label: z.string().optional(),
+      }),
+    )
+    .optional(),
+  size: z.enum(["sm", "md", "lg"]).optional(),
+});
+
+const kpiCardNodeSchema = z.object({
+  ...baseNodeExtras,
+  type: z.literal("kpi_card"),
+  title: z.string(),
+  value: z.union([z.string(), z.number()]),
+  unit: z.string().optional(),
+  trend: z.enum(["up", "down", "stable"]).optional(),
+  trendValue: z.string().optional(),
+  description: z.string().optional(),
+  tone: z
+    .enum(["default", "primary", "success", "warning", "danger"])
+    .optional(),
+});
+
+const heatmapNodeSchema = z.object({
+  ...baseNodeExtras,
+  type: z.literal("heatmap"),
+  title: z.string().optional(),
+  xLabels: z.array(z.string()).optional(),
+  yLabels: z.array(z.string()).optional(),
+  data: z.array(z.array(z.number())),
+  colorScale: z.enum(["blue", "green", "red", "yellow", "purple"]).optional(),
+  cellSize: z.enum(["sm", "md", "lg"]).optional(),
+});
+
+const colorSwatchNodeSchema = z.object({
+  ...baseNodeExtras,
+  type: z.literal("color_swatch"),
+  title: z.string().optional(),
+  colors: z.array(
+    z.object({
+      value: z.string(),
+      label: z.string().optional(),
+    }),
+  ),
+  size: z.enum(["sm", "md", "lg"]).optional(),
+});
+
+const radarChartNodeSchema = z.object({
+  ...baseNodeExtras,
+  type: z.literal("radar_chart"),
+  title: z.string().optional(),
+  axes: z.array(z.string()),
+  series: z.array(
+    z.object({
+      name: z.string(),
+      values: z.array(z.number()),
+      color: z.string().optional(),
+    }),
+  ),
+  maxValue: z.number().optional(),
+});
+
+const statGroupNodeSchema = z.object({
+  ...baseNodeExtras,
+  type: z.literal("stat_group"),
+  gap: z.enum(["none", "xs", "sm", "md", "lg"]).optional(),
+  columns: z.union([z.literal(2), z.literal(3), z.literal(4)]).optional(),
+  items: z.array(
+    z.object({
+      id: z.string(),
+      label: z.string(),
+      value: z.union([z.string(), z.number()]),
+      unit: z.string().optional(),
+      trend: z.enum(["up", "down", "stable"]).optional(),
+      trendValue: z.string().optional(),
+    }),
+  ),
+});
+
+const stepsNodeSchema = z.object({
+  ...baseNodeExtras,
+  type: z.literal("steps"),
+  current: z.number(),
+  direction: z.enum(["horizontal", "vertical"]).optional(),
+  items: z.array(
+    z.object({
+      id: z.string(),
+      title: z.string(),
+      description: z.string().optional(),
+      status: z.enum(["wait", "process", "finish", "error"]).optional(),
+    }),
+  ),
+});
+
+// -----------------------------------------------------------
 // UINode — Discriminated Union of all node types
 // -----------------------------------------------------------
 
@@ -430,6 +705,27 @@ export const uiNodeSchema = z.discriminatedUnion("type", [
   codeBlockNodeSchema,
   chartBarNodeSchema,
   chartLineNodeSchema,
+  // v0.3.1 — Extended Nodes
+  carouselNodeSchema,
+  badgeNodeSchema,
+  progressNodeSchema,
+  statisticNodeSchema,
+  timelineNodeSchema,
+  accordionNodeSchema,
+  breadcrumbNodeSchema,
+  tagNodeSchema,
+  listNodeSchema,
+  quoteNodeSchema,
+  cardNodeSchema,
+  descriptionListNodeSchema,
+  emptyStateNodeSchema,
+  gaugeNodeSchema,
+  kpiCardNodeSchema,
+  heatmapNodeSchema,
+  colorSwatchNodeSchema,
+  radarChartNodeSchema,
+  statGroupNodeSchema,
+  stepsNodeSchema,
 ]);
 
 // -----------------------------------------------------------
@@ -452,6 +748,19 @@ export const appSearchEventSchema = z.object({
   timestamp: z.string(),
   type: z.literal("app.search"),
   query: z.string(),
+  refine: z.boolean().optional(),
+  thinking: z.boolean().optional(),
+  refinedPrompt: z.string().optional(),
+  refinedContext: z
+    .object({
+      appKind: z.string().optional(),
+      appTitle: z.string().optional(),
+      appDescription: z.string().optional(),
+      keyFeatures: z.array(z.string()).optional(),
+      suggestedLayout: z.string().optional(),
+      suggestedComponents: z.array(z.string()).optional(),
+    })
+    .optional(),
 });
 
 export const componentClickEventSchema = z.object({

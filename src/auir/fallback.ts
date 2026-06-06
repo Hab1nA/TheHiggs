@@ -39,7 +39,9 @@ export function createFallbackState(reason: string): AUIRState {
           type: "alert",
           tone: "danger",
           title: "AI UI generation failed",
-          message: reason || "The model returned an invalid UI state. Try another request.",
+          message:
+            reason ||
+            "The model returned an invalid UI state. Try another request.",
           semanticRole: "warning",
         },
         {
@@ -92,6 +94,28 @@ export function createLauncherState(): AUIRState {
           semanticRole: "display",
         },
         {
+          id: "launcher_badges",
+          type: "container",
+          direction: "row",
+          gap: "sm",
+          children: [
+            {
+              id: "badge_v",
+              type: "badge",
+              text: "v0.3.1",
+              variant: "primary",
+              size: "sm",
+            },
+            {
+              id: "badge_comp",
+              type: "badge",
+              text: "49 Components",
+              variant: "success",
+              size: "sm",
+            },
+          ],
+        },
+        {
           id: "launcher_subtitle",
           type: "text",
           text: "AI-UI Co-Execution Runtime — AI 驻留在自己生成的 UI 中",
@@ -99,6 +123,17 @@ export function createLauncherState(): AUIRState {
         },
         {
           id: "launcher_spacer",
+          type: "spacer",
+          size: "md",
+        },
+        {
+          id: "launcher_quote",
+          type: "quote",
+          text: "Describe any tool you need — the AI designs and inhabits its interface.",
+          tone: "muted",
+        },
+        {
+          id: "launcher_spacer2",
           type: "spacer",
           size: "lg",
         },
@@ -113,6 +148,92 @@ export function createLauncherState(): AUIRState {
             mode: "ai_transition",
             commitOn: ["enter"],
           },
+        },
+        {
+          id: "launcher_spacer3",
+          type: "spacer",
+          size: "md",
+        },
+        {
+          id: "launcher_examples",
+          type: "panel",
+          title: "Try these examples",
+          subtitle: "Click a preset or type your own idea",
+          children: [
+            {
+              id: "examples_list",
+              type: "list",
+              gap: "xs",
+              items: [
+                {
+                  id: "ex1",
+                  text: "Dashboard with revenue metrics and user analytics",
+                  icon: "📊",
+                },
+                {
+                  id: "ex2",
+                  text: "Project tracker with milestones and timeline",
+                  icon: "📋",
+                },
+                {
+                  id: "ex3",
+                  text: "Health & fitness tracker with daily goals",
+                  icon: "💪",
+                },
+                {
+                  id: "ex4",
+                  text: "Component showcase — see all 49 UI elements",
+                  icon: "🎨",
+                },
+                {
+                  id: "ex5",
+                  text: "Code editor with syntax highlighting",
+                  icon: "💻",
+                },
+                {
+                  id: "ex6",
+                  text: "Conversion funnel analytics with heatmaps",
+                  icon: "📈",
+                },
+              ],
+            },
+          ],
+        },
+        {
+          id: "launcher_tags",
+          type: "container",
+          direction: "row",
+          gap: "sm",
+          children: [
+            {
+              id: "tag_eng",
+              type: "tag",
+              text: "工程工具",
+              variant: "primary",
+              size: "sm",
+            },
+            {
+              id: "tag_dash",
+              type: "tag",
+              text: "数据看板",
+              variant: "success",
+              size: "sm",
+            },
+            {
+              id: "tag_prod",
+              type: "tag",
+              text: "生产力",
+              variant: "warning",
+              size: "sm",
+            },
+            {
+              id: "tag_creative",
+              type: "tag",
+              text: "创意工具",
+              variant: "info",
+              size: "sm",
+            },
+          ],
         },
       ],
     },

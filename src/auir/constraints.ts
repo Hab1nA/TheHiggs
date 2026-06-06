@@ -34,6 +34,27 @@ export const ALLOWED_COMPONENTS = [
   "code_block",
   "chart_bar",
   "chart_line",
+  // v0.3.1 — Extended Components
+  "carousel",
+  "badge",
+  "progress",
+  "statistic",
+  "timeline",
+  "accordion",
+  "breadcrumb",
+  "tag",
+  "list",
+  "quote",
+  "card",
+  "description_list",
+  "empty_state",
+  "gauge",
+  "kpi_card",
+  "heatmap",
+  "color_swatch",
+  "radar_chart",
+  "stat_group",
+  "steps",
 ] as const;
 
 export const defaultConstraints: AUIRConstraints = {
@@ -82,13 +103,19 @@ export const relaxedConstraints: AUIRConstraints = {
 
 export function mergeConstraints(
   base: AUIRConstraints,
-  overrides: Partial<AUIRConstraints>
+  overrides: Partial<AUIRConstraints>,
 ): AUIRConstraints {
   return {
     ...base,
     ...overrides,
     layoutPolicy: { ...base.layoutPolicy, ...overrides.layoutPolicy },
-    interactionPolicy: { ...base.interactionPolicy, ...overrides.interactionPolicy },
-    transitionPolicy: { ...base.transitionPolicy, ...overrides.transitionPolicy },
+    interactionPolicy: {
+      ...base.interactionPolicy,
+      ...overrides.interactionPolicy,
+    },
+    transitionPolicy: {
+      ...base.transitionPolicy,
+      ...overrides.transitionPolicy,
+    },
   };
 }
