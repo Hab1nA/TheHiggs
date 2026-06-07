@@ -12,7 +12,7 @@
 
 import { buildAUIRSystemPrompt } from "@/auir/prompt";
 import {
-  auirResponseSchema,
+  createAIResponseSchema,
   imageBlueprintSchema,
   type ImageBlueprint,
 } from "@/auir/schema";
@@ -33,6 +33,12 @@ import { executeTool } from "./tools";
 // -----------------------------------------------------------
 // Phase 1: 工具决策 Schema + 轻量级调用
 // -----------------------------------------------------------
+
+/**
+ * 深度限制的 AI Response schema（避免 z.lazy() 递归导致 JSON Schema 退化为 any）。
+ * 深度 3 允许 screen → panel → container → leaf 四层嵌套。
+ */
+const aiResponseSchema = createAIResponseSchema(3);
 
 /** 工具决策结果类型 */
 interface ToolDecision {
@@ -1168,7 +1174,7 @@ async function generateWithRetry(
       () =>
         generateObject({
           model,
-          schema: auirResponseSchema,
+          schema: aiResponseSchema,
           system: systemPrompt,
           prompt: JSON.stringify(promptObj),
           mode: "json",
@@ -1237,7 +1243,7 @@ async function generateWithRetry(
       () =>
         generateObject({
           model,
-          schema: auirResponseSchema,
+          schema: aiResponseSchema,
           system: shortSystem,
           prompt: JSON.stringify(promptObj),
           mode: "json",
@@ -1304,7 +1310,7 @@ async function generateWithRetry(
       () =>
         generateObject({
           model,
-          schema: auirResponseSchema,
+          schema: aiResponseSchema,
           system: minimalSystem,
           prompt: JSON.stringify(minimalPrompt),
           mode: "json",

@@ -976,6 +976,21 @@ export async function downloadResource(
     );
   }
 
+  // 域名黑名单：已知会返回 403 或反盗链的图片源，直接跳过
+  const BLOCKED_DOMAINS = new Set([
+    "images.stockcake.com",
+    "www.stockcake.com",
+  ]);
+  if (BLOCKED_DOMAINS.has(parsedUrl.hostname)) {
+    console.warn(
+      `[WebTools] Skipping blocked domain: ${parsedUrl.hostname} (known 403)`,
+    );
+    return createDownloadError(
+      url,
+      `Domain "${parsedUrl.hostname}" is blocked (known anti-hotlink / 403).`,
+    );
+  }
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 

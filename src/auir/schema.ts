@@ -1142,3 +1142,250 @@ export const auirResponseSchema = z.object({
 // Type exports derived from schemas
 export type AUIRRequestValidated = z.infer<typeof auirRequestSchema>;
 export type AUIRResponseValidated = z.infer<typeof auirResponseSchema>;
+
+// -----------------------------------------------------------
+// Depth-Limited UI Schema（供 AI SDK generateObject 使用）
+// 避免 z.lazy() 递归引用导致 JSON Schema 退化为 any。
+// -----------------------------------------------------------
+
+/**
+ * 创建深度限制的 UI 节点 schema。
+ * @param depth 最大嵌套深度。0 = 仅叶子节点，1 = 容器含叶子子节点，以此类推。
+ */
+export function createDepthLimitedUISchema(depth: number): z.ZodType<unknown> {
+  // 叶子节点（无 children 字段，可安全复用）
+  const leafSchemas: z.ZodDiscriminatedUnionOption<string>[] = [
+    headingNodeSchema,
+    textNodeSchema,
+    buttonNodeSchema,
+    textInputNodeSchema,
+    numberInputNodeSchema,
+    textareaNodeSchema,
+    selectNodeSchema,
+    checkboxNodeSchema,
+    sliderNodeSchema,
+    stepperNodeSchema,
+    externalLinkNodeSchema,
+    localValueDisplayNodeSchema,
+    tableNodeSchema,
+    metricNodeSchema,
+    alertNodeSchema,
+    codeBlockNodeSchema,
+    chartBarNodeSchema,
+    chartLineNodeSchema,
+    imageNodeSchema,
+    badgeNodeSchema,
+    progressNodeSchema,
+    statisticNodeSchema,
+    timelineNodeSchema,
+    breadcrumbNodeSchema,
+    tagNodeSchema,
+    listNodeSchema,
+    quoteNodeSchema,
+    descriptionListNodeSchema,
+    emptyStateNodeSchema,
+    gaugeNodeSchema,
+    kpiCardNodeSchema,
+    heatmapNodeSchema,
+    colorSwatchNodeSchema,
+    radarChartNodeSchema,
+    statGroupNodeSchema,
+    stepsNodeSchema,
+    clockNodeSchema,
+    timerRefreshNodeSchema,
+    spacerNodeSchema,
+    dividerNodeSchema,
+  ];
+
+  if (depth <= 0) {
+    return z.discriminatedUnion(
+      "type",
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      leafSchemas as unknown as readonly [
+        z.ZodDiscriminatedUnionOption<"type">,
+        ...z.ZodDiscriminatedUnionOption<"type">[],
+      ],
+    );
+  }
+
+  const childRef = createDepthLimitedUISchema(depth - 1);
+  const childArray = z.array(childRef);
+
+  // 容器节点（含 children，需重建以引用 childRef）
+  const containerSchemas: z.ZodDiscriminatedUnionOption<string>[] = [
+    z.object({
+      ...baseNodeExtras,
+      type: z.literal("screen"),
+      title: z.string().optional(),
+      layoutMode: z
+        .enum(["single", "dashboard", "workspace", "document", "wizard"])
+        .optional(),
+      gap: z.enum(["none", "xs", "sm", "md", "lg"]).optional(),
+      children: childArray,
+    }),
+    z.object({
+      ...baseNodeExtras,
+      type: z.literal("container"),
+      direction: z.enum(["row", "column", "grid"]).optional(),
+      gap: z.enum(["none", "xs", "sm", "md", "lg"]).optional(),
+      wrap: z.boolean().optional(),
+      columns: z
+        .union([
+          z.literal(1),
+          z.literal(2),
+          z.literal(3),
+          z.literal(4),
+          z.literal(5),
+          z.literal(6),
+        ])
+        .optional(),
+      children: childArray,
+    }),
+    z.object({
+      ...baseNodeExtras,
+      type: z.literal("grid"),
+      columns: z.union([
+        z.literal(1),
+        z.literal(2),
+        z.literal(3),
+        z.literal(4),
+        z.literal(5),
+        z.literal(6),
+        z.literal("auto"),
+      ]),
+      gap: z.enum(["xs", "sm", "md", "lg"]).optional(),
+      children: childArray,
+    }),
+    z.object({
+      ...baseNodeExtras,
+      type: z.literal("split"),
+      orientation: z.enum(["horizontal", "vertical"]),
+      ratio: z.enum(["1:1", "1:2", "2:1", "1:3", "3:1"]).optional(),
+      primary: childRef,
+      secondary: childRef,
+    }),
+    z.object({
+      ...baseNodeExtras,
+      type: z.literal("region"),
+      region: z.enum([
+        "header",
+        "sidebar",
+        "main",
+        "inspector",
+        "footer",
+        "toolbar",
+        "results",
+        "logs",
+      ]),
+      gap: z.enum(["none", "xs", "sm", "md", "lg"]).optional(),
+      children: childArray,
+    }),
+    z.object({
+      ...baseNodeExtras,
+      type: z.literal("toolbar"),
+      gap: z.enum(["none", "xs", "sm", "md", "lg"]).optional(),
+      children: childArray,
+    }),
+    z.object({
+      ...baseNodeExtras,
+      type: z.literal("panel"),
+      title: z.string().optional(),
+      subtitle: z.string().optional(),
+      gap: z.enum(["none", "xs", "sm", "md", "lg"]).optional(),
+      children: childArray,
+    }),
+    z.object({
+      ...baseNodeExtras,
+      type: z.literal("tabs"),
+      activeTab: z.string(),
+      gap: z.enum(["none", "xs", "sm", "md", "lg"]).optional(),
+      tabs: z.array(
+        z.object({
+          id: z.string(),
+          label: z.string(),
+          children: childArray,
+        }),
+      ),
+      interaction: interactionPolicySchema.optional(),
+    }),
+    z.object({
+      ...baseNodeExtras,
+      type: z.literal("modal"),
+      title: z.string(),
+      children: childArray,
+      closeIntent: z.string(),
+    }),
+    z.object({
+      ...baseNodeExtras,
+      type: z.literal("drawer"),
+      title: z.string(),
+      side: z.enum(["left", "right", "bottom"]),
+      children: childArray,
+      closeIntent: z.string(),
+    }),
+    z.object({
+      ...baseNodeExtras,
+      type: z.literal("carousel"),
+      title: z.string().optional(),
+      gap: z.enum(["none", "xs", "sm", "md", "lg"]).optional(),
+      visibleItems: z
+        .union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)])
+        .optional(),
+      children: childArray,
+    }),
+    z.object({
+      ...baseNodeExtras,
+      type: z.literal("accordion"),
+      defaultOpenIndex: z.number().optional(),
+      gap: z.enum(["none", "xs", "sm", "md", "lg"]).optional(),
+      items: z.array(
+        z.object({
+          id: z.string(),
+          title: z.string(),
+          children: childArray,
+        }),
+      ),
+    }),
+    z.object({
+      ...baseNodeExtras,
+      type: z.literal("card"),
+      title: z.string().optional(),
+      subtitle: z.string().optional(),
+      image: z.string().optional(),
+      footer: childArray.optional(),
+      gap: z.enum(["none", "xs", "sm", "md", "lg"]).optional(),
+      children: childArray,
+    }),
+  ];
+
+  return z.discriminatedUnion(
+    "type",
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    [...leafSchemas, ...containerSchemas] as unknown as readonly [
+      z.ZodDiscriminatedUnionOption<"type">,
+      ...z.ZodDiscriminatedUnionOption<"type">[],
+    ],
+  );
+}
+
+/**
+ * 创建供 AI SDK 使用的 AUIR Response schema（深度限制版）。
+ * 替代 auirResponseSchema，避免 z.lazy() 导致 JSON Schema 退化。
+ */
+export function createAIResponseSchema(depth = 3) {
+  return z.object({
+    protocol: z.literal("AUIR"),
+    version: z.literal("0.3"),
+    next: z.object({
+      app: auirAppDescriptorSchema,
+      memory: z.object({
+        app: z.record(z.string(), z.unknown()),
+        session: z.record(z.string(), z.unknown()),
+      }),
+      ui: createDepthLimitedUISchema(depth),
+    }),
+    memoryPatch: auirMemoryPatchSchema.optional(),
+    toolRequests: z.array(auirToolRequestSchema).optional(),
+    diagnostics: auirDiagnosticsSchema.optional(),
+  });
+}
