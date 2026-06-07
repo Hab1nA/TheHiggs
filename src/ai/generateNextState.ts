@@ -119,6 +119,9 @@ SPECIAL RULES FOR timer.refresh EVENTS:
 - Do NOT default to needsTools=false for timer.refresh. The whole point of timer.refresh is to re-generate the UI with complete data.
 
 SPECIAL RULES FOR component.click EVENTS:
+- If the button intent is "perform_search" and a "searchQuery" field is present, treat it as a NEW search for that topic.
+  set needsTools=true, request webSearch and imageSearch for the searchQuery topic.
+  Generate a COMPLETELY FRESH imageBlueprint — do NOT reuse image slots or queries from previous turns.
 - If the button intent suggests refreshing, reloading, or fetching new data (e.g., "Refresh", "Get Latest", "Update Data", "刷新"), set needsTools=true.
 - Use previousApp and sessionContext to determine what kind of data to fetch.
 - If the intent is about internal UI state changes (e.g., "Switch tab", "Close modal"), set needsTools=false.
@@ -142,6 +145,17 @@ Output ONLY valid JSON. No markdown fences, no explanations.`;
       request.event.type === "component.click"
         ? request.event.target?.intent
         : undefined,
+    // For perform_search clicks, expose the current search query so Phase 1
+    // knows WHAT the user is searching for (not just that they clicked a button)
+    ...(request.event.type === "component.click" &&
+    request.event.target?.intent === "perform_search"
+      ? {
+          searchQuery:
+            request.memory?.session?.search_query ??
+            request.event.clientSnapshot?.localState?.values?.searchQuery ??
+            request.event.clientSnapshot?.localState?.values?.search_query,
+        }
+      : {}),
     // 为 timer.refresh 事件补充 appTitle/appKind/appId 上下文
     ...(request.event.type === "timer.refresh"
       ? {

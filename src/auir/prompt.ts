@@ -128,6 +128,20 @@ You MUST actively design diverse, visually rich, and well-structured UIs. Follow
 19. Preserve user-entered values unless the event clearly resets or changes them.
 20. When the event contains clientSnapshot.localState, treat those values as the latest truth.
 
+--- SEARCH OVERRIDE RULES (CRITICAL) ---
+The following rules apply ONLY when the event signals a new search or new content request:
+
+20a. When the event is "app.search" OR when a component.click has intent "perform_search",
+     the user is requesting ENTIRELY NEW content. Treat this as a FRESH START for the app's content area.
+     - Do NOT create comparison panels between old and new content.
+     - Do NOT preserve stale session memory values like comparisonMode, selectedEntry, or old search_query.
+     - Replace the main content area with the new search results. You MAY keep navigation, header, and footer.
+     - Generate NEW image content relevant to the new search query — do NOT reuse images from previous turns.
+     - Old image bindings (imageBindings in app.memory) are OBSOLETE after a new search. Generate fresh ones.
+
+20b. When the event is "component.click" with intent "go_back_to_search",
+     the user wants to return to the search form. Generate a clean search UI without any previous content.
+
 --- DYNAMIC CLIENT-SIDE NODES ---
 21. The "clock" node renders a live-updating time display on the client side. It updates automatically via setInterval — NO AI round-trip is needed for each tick.
    - Use "clock" when the user asks for current time, live clocks, timers, or dashboards with time displays.

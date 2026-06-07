@@ -373,7 +373,7 @@ You MUST NOT modify any node's "intent", "binding", "interaction", "localAction"
 2. PRESERVE INTERACTIVITY: Do NOT modify intent, binding, interaction, localAction, or variant fields.
 3. PRESERVE IDS: Do NOT change any node's "id" or "type".
 4. FIX > REWRITE: Prefer targeted fixes over wholesale layout replacement.
-5. MAX 15 CHANGES: Limit to at most 15 substantive changes.
+5. MAX 30 CHANGES: Limit to at most 30 substantive changes.
 6. COMPLETE OUTPUT: Output the FULL corrected UI tree, not a diff.
 
 ${OUTPUT_FORMAT_INSTRUCTIONS}`;
@@ -452,7 +452,7 @@ You MUST NOT modify any node's "intent", "binding", "interaction", "localAction"
 2. PRESERVE INTERACTIVITY: Do NOT modify intent, binding, interaction, localAction, or variant fields.
 3. PRESERVE IDS: Do NOT change any node's "id" or "type".
 4. FIX > REWRITE: Prefer targeted fixes over wholesale layout replacement.
-5. MAX 10 CHANGES: Limit to at most 10 consistency fixes.
+5. MAX 30 CHANGES: Limit to at most 30 consistency fixes.
 6. COMPLETE OUTPUT: Output the FULL corrected UI tree, not a diff.
 
 ${OUTPUT_FORMAT_INSTRUCTIONS}`;
@@ -547,7 +547,7 @@ You MUST NOT change layout properties (gap, direction, columns, ratio, layout, s
 2. PRESERVE CONTENT: Do NOT change text strings, metric values, or alert messages.
 3. PRESERVE IDS: Do NOT change any node's "id" or "type".
 4. FIX > REPLACE: Prefer fixing individual properties over replacing entire nodes.
-5. MAX 10 CHANGES: Limit to at most 10 functional fixes.
+5. MAX 30 CHANGES: Limit to at most 30 functional fixes.
 6. COMPLETE OUTPUT: Output the FULL corrected UI tree, not a diff.
 
 ${OUTPUT_FORMAT_INSTRUCTIONS}`;

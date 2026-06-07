@@ -22,10 +22,41 @@ import {
 } from "./postProcessUI";
 import { refineUserQuery, type RefineOutput } from "./refinePrompt";
 
+/**
+ * 清理搜索事件中的陈旧记忆。
+ * 当事件是 app.search 或 perform_search 按钮点击时，
+ * 移除 comparisonMode、selectedEntry 和 imageBindings，
+ * 防止 AI 基于旧状态创建对比面板或复用旧图片。
+ *
+ * 此函数修改 request 对象本身（原地操作），
+ * 同时被前端 page.tsx 和后端 runtime 使用，确保所有路径都生效。
+ */
+function sanitizeSearchMemory(request: AUIRRequest): void {
+  const isSearchEvent =
+    request.event.type === "app.search" ||
+    (request.event.type === "component.click" &&
+      request.event.target?.intent === "perform_search");
+
+  if (!isSearchEvent) return;
+
+  // Clean stale session keys
+  if (request.memory.session) {
+    delete request.memory.session.comparisonMode;
+    delete request.memory.session.selectedEntry;
+  }
+  // Clean stale image bindings
+  if (request.memory.app) {
+    delete request.memory.app.imageBindings;
+  }
+}
+
 /** 主 AI Runtime：根据配置选择 Mock 或真实 AI 调用 */
 export async function runAIRuntime(
   request: AUIRRequest,
 ): Promise<AUIRResponse> {
+  // ── Search override: sanitize stale memory for search-like events ──
+  sanitizeSearchMemory(request);
+
   const pageLogContext = getPageLogContext(request);
   if (isMockMode()) {
     console.log("[AI Runtime] Using Mock mode");

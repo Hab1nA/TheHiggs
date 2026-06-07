@@ -153,6 +153,27 @@ export default function Home() {
       if (incomingPageLogContext) {
         setPageLogContext(requestPageLogContext);
       }
+      // ── Search override: clear stale state for search-like events ──
+      const isSearchEvent =
+        event.type === "app.search" ||
+        (event.type === "component.click" &&
+          event.target?.intent === "perform_search");
+      const effectiveMemory = isSearchEvent
+        ? {
+            ...memory,
+            session: {
+              ...memory.session,
+              // Clear stale search context so AI doesn't create comparison panels
+              comparisonMode: undefined,
+              selectedEntry: undefined,
+            },
+            app: {
+              ...memory.app,
+              // Clear stale image bindings so AI generates fresh image content
+              imageBindings: undefined,
+            },
+          }
+        : memory;
       const request: AUIRRequest = {
         protocol: "AUIR",
         version: "0.3",
@@ -166,7 +187,7 @@ export default function Home() {
         },
         previous: auirState,
         event,
-        memory,
+        memory: effectiveMemory,
         constraints: defaultConstraints,
         availableTools: [],
       };
