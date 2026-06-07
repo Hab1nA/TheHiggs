@@ -128,7 +128,11 @@ export type ComponentInteractionMeta = {
 export type RendererProps = {
   node: UINode;
   localState: LocalUIState;
-  setLocalValue: (binding: string, value: unknown, meta?: ComponentInteractionMeta) => void;
+  setLocalValue: (
+    binding: string,
+    value: unknown,
+    meta?: ComponentInteractionMeta,
+  ) => void;
   onAIEvent: (event: AUIREvent) => void;
 };
 
@@ -163,6 +167,7 @@ function renderNode(
   setLocalValue: (b: string, v: unknown, m?: ComponentInteractionMeta) => void,
   onAIEvent: (e: AUIREvent) => void,
 ) {
+  if (t === "screen")
     return (
       <ScreenRender
         n={n}
@@ -411,6 +416,7 @@ function RenderKids({
   setLocalValue: (b: string, v: unknown, m?: ComponentInteractionMeta) => void;
   onAIEvent: (e: AUIREvent) => void;
 }) {
+  if (!kids || !Array.isArray(kids)) return null;
   return (
     <>
       {kids.map((c) => (
@@ -1264,7 +1270,14 @@ function TextInputRender({ n, localState, setLocalValue, onAIEvent }: RProps) {
       <input
         type="text"
         value={value}
-        onChange={(e) => setLocalValue(binding, e.target.value, { componentId: String(n.id), componentType: "text_input", label: n.label ? String(n.label) : undefined, interactionMode: interaction?.mode })}
+        onChange={(e) =>
+          setLocalValue(binding, e.target.value, {
+            componentId: String(n.id),
+            componentType: "text_input",
+            label: n.label ? String(n.label) : undefined,
+            interactionMode: interaction?.mode,
+          })
+        }
         onBlur={() => fireCommit("blur")}
         onKeyDown={(e) => {
           if (e.key === "Enter") fireCommit("enter");
@@ -1324,7 +1337,12 @@ function NumberInputRender({
           type="number"
           value={value}
           onChange={(e) =>
-            setLocalValue(binding, parseFloat(e.target.value) || 0, { componentId: String(n.id), componentType: "number_input", label: n.label ? String(n.label) : undefined, interactionMode: interaction?.mode })
+            setLocalValue(binding, parseFloat(e.target.value) || 0, {
+              componentId: String(n.id),
+              componentType: "number_input",
+              label: n.label ? String(n.label) : undefined,
+              interactionMode: interaction?.mode,
+            })
           }
           onBlur={() => fireCommit("blur")}
           onKeyDown={(e) => {
@@ -1383,7 +1401,14 @@ function TextareaRender({ n, localState, setLocalValue, onAIEvent }: RProps) {
       ) : null}
       <textarea
         value={value}
-        onChange={(e) => setLocalValue(binding, e.target.value, { componentId: String(n.id), componentType: "textarea", label: n.label ? String(n.label) : undefined, interactionMode: interaction?.mode })}
+        onChange={(e) =>
+          setLocalValue(binding, e.target.value, {
+            componentId: String(n.id),
+            componentType: "textarea",
+            label: n.label ? String(n.label) : undefined,
+            interactionMode: interaction?.mode,
+          })
+        }
         onBlur={() => fireCommit("blur")}
         className="bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-100 min-h-[80px] focus:outline-none focus:border-blue-500"
       />
@@ -1434,7 +1459,12 @@ function SelectRender({ n, localState, setLocalValue, onAIEvent }: RProps) {
         value={value}
         onChange={(e) => {
           const next = e.target.value;
-          setLocalValue(binding, next, { componentId: String(n.id), componentType: "select", label: n.label ? String(n.label) : undefined, interactionMode: interaction?.mode });
+          setLocalValue(binding, next, {
+            componentId: String(n.id),
+            componentType: "select",
+            label: n.label ? String(n.label) : undefined,
+            interactionMode: interaction?.mode,
+          });
           fireCommit("change", next);
         }}
         className="bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-100 focus:outline-none focus:border-blue-500"
@@ -1489,7 +1519,12 @@ function CheckboxRender({ n, localState, setLocalValue, onAIEvent }: RProps) {
         checked={checked}
         onChange={(e) => {
           const next = e.target.checked;
-          setLocalValue(binding, next, { componentId: String(n.id), componentType: "checkbox", label: n.label ? String(n.label) : undefined, interactionMode: interaction?.mode });
+          setLocalValue(binding, next, {
+            componentId: String(n.id),
+            componentType: "checkbox",
+            label: n.label ? String(n.label) : undefined,
+            interactionMode: interaction?.mode,
+          });
           fireCommit("change", next);
         }}
         className="rounded bg-neutral-800 border-neutral-700 text-blue-600 focus:ring-blue-500"
@@ -1553,7 +1588,12 @@ function SliderRender({ n, localState, setLocalValue, onAIEvent }: RProps) {
         step={Number(n.step ?? 1)}
         onChange={(e) => {
           const next = parseFloat(e.target.value);
-          setLocalValue(binding, next, { componentId: String(n.id), componentType: "slider", label: n.label ? String(n.label) : undefined, interactionMode: interaction?.mode });
+          setLocalValue(binding, next, {
+            componentId: String(n.id),
+            componentType: "slider",
+            label: n.label ? String(n.label) : undefined,
+            interactionMode: interaction?.mode,
+          });
           fireCommit("change", next);
         }}
         className="w-full accent-blue-600"
@@ -1610,12 +1650,22 @@ function StepperRender({ n, localState, setLocalValue, onAIEvent }: RProps) {
 
   const inc = useCallback(() => {
     const nxt = Math.min(Number(n.max ?? Infinity), safe + step);
-    setLocalValue(binding, nxt, { componentId: String(n.id), componentType: "stepper", label: n.label ? String(n.label) : undefined, interactionMode: interaction?.mode });
+    setLocalValue(binding, nxt, {
+      componentId: String(n.id),
+      componentType: "stepper",
+      label: n.label ? String(n.label) : undefined,
+      interactionMode: interaction?.mode,
+    });
     fireCommit(nxt);
   }, [n, safe, step, setLocalValue, binding, fireCommit]);
   const dec = useCallback(() => {
     const nxt = Math.max(Number(n.min ?? -Infinity), safe - step);
-    setLocalValue(binding, nxt, { componentId: String(n.id), componentType: "stepper", label: n.label ? String(n.label) : undefined, interactionMode: interaction?.mode });
+    setLocalValue(binding, nxt, {
+      componentId: String(n.id),
+      componentType: "stepper",
+      label: n.label ? String(n.label) : undefined,
+      interactionMode: interaction?.mode,
+    });
     fireCommit(nxt);
   }, [n, safe, step, setLocalValue, binding, fireCommit]);
   return (
