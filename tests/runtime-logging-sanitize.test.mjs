@@ -65,3 +65,55 @@ test("sanitizeForRuntimeLog truncates long strings with original length", async 
   assert.equal(sanitized.prompt.originalLength, 12);
   assert.equal(sanitized.prompt.value, "xxxxx");
 });
+
+test("sanitizeForRuntimeLog does NOT redact business keys containing 'key' as prefix", async () => {
+  const { sanitizeForRuntimeLog } = await loadSanitizer();
+
+  const sanitized = sanitizeForRuntimeLog({
+    keyFeatures: ["feature1", "feature2"],
+    keyPoints: "important points",
+    apiKey: "sk-secret",
+    secretKey: "my-secret",
+  });
+
+  // Business keys should NOT be redacted
+  assert.deepEqual(sanitized.keyFeatures, ["feature1", "feature2"]);
+  assert.equal(sanitized.keyPoints, "important points");
+
+  // Credential keys SHOULD be redacted
+  assert.equal(sanitized.apiKey, "[REDACTED]");
+  assert.equal(sanitized.secretKey, "[REDACTED]");
+});
+
+test("sanitizeForRuntimeLog handles malformed data URL percent-encoding without throwing", async () => {
+  const { sanitizeForRuntimeLog } = await loadSanitizer();
+
+  // Malformed percent-encoding that would cause URIError in decodeURIComponent
+  const sanitized = sanitizeForRuntimeLog({
+    badData: "data:text/plain,%E0%A4%A",
+  });
+
+  // Should not throw — should return a data-url summary with raw bytes
+  assert.equal(sanitized.badData.kind, "data-url");
+  assert.equal(sanitized.badData.mime, "text/plain");
+  assert.ok(sanitized.badData.byteLength > 0);
+  assert.match(sanitized.badData.sha256, /^[a-f0-9]{64}$/);
+});
+
+test("sanitizeForRuntimeLog redacts standalone 'key' but not compound words starting with 'key'", async () => {
+  const { sanitizeForRuntimeLog } = await loadSanitizer();
+
+  const sanitized = sanitizeForRuntimeLog({
+    key: "should-be-redacted",
+    keyFeatures: "should-NOT-be-redacted",
+    keyPoints: "should-NOT-be-redacted",
+    api_key: "should-be-redacted",
+    apiKey: "should-be-redacted",
+  });
+
+  assert.equal(sanitized.key, "[REDACTED]");
+  assert.equal(sanitized.keyFeatures, "should-NOT-be-redacted");
+  assert.equal(sanitized.keyPoints, "should-NOT-be-redacted");
+  assert.equal(sanitized.api_key, "[REDACTED]");
+  assert.equal(sanitized.apiKey, "[REDACTED]");
+});

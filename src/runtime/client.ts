@@ -30,7 +30,7 @@ export async function postRuntimeLog(
   if (!context?.pageLogId) return;
 
   try {
-    await fetch("/api/runtime-log", {
+    const res = await fetch("/api/runtime-log", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -39,6 +39,9 @@ export async function postRuntimeLog(
         sessionId: context.sessionId,
       }),
     });
+    if (!res.ok) {
+      console.warn("[RuntimeLog] server rejected log event:", res.status, await res.text().catch(() => ""));
+    }
   } catch (error) {
     console.warn("[RuntimeLog] frontend log failed:", error);
   }

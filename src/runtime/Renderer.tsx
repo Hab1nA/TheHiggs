@@ -5,8 +5,19 @@
 "use client";
 
 import type { AUIREvent, LocalUIState, UINode } from "@/auir/types";
-import React, { useCallback } from "react";
+import React, { useCallback, useEffect } from "react";
 import { resolveBindingValue } from "./bindings";
+
+// -----------------------------------------------------------
+// Current UI Context — 为事件创建提供当前 UI 树
+// -----------------------------------------------------------
+
+const CurrentUIContext = React.createContext<UINode | null>(null);
+
+/** 在 Renderer 树内部获取当前 UI 节点 */
+function useCurrentUI(): UINode | null {
+  return React.useContext(CurrentUIContext);
+}
 
 // -----------------------------------------------------------
 // App Context — 为 TimerRefreshRender 等需要 app 信息的组件提供上下文
@@ -107,10 +118,17 @@ function resolveSpaceYClass(n: Record<string, unknown>): string {
 // Renderer Props
 // -----------------------------------------------------------
 
+export type ComponentInteractionMeta = {
+  componentId: string;
+  componentType: string;
+  label?: string;
+  interactionMode?: string;
+};
+
 export type RendererProps = {
   node: UINode;
   localState: LocalUIState;
-  setLocalValue: (binding: string, value: unknown) => void;
+  setLocalValue: (binding: string, value: unknown, meta?: ComponentInteractionMeta) => void;
   onAIEvent: (event: AUIREvent) => void;
 };
 
@@ -130,7 +148,21 @@ export default function Renderer({
   const n = node as Record<string, unknown>;
   const t = node.type;
 
-  if (t === "screen")
+  return (
+    <CurrentUIContext.Provider value={node}>
+      {renderNode(t, n, node, localState, setLocalValue, onAIEvent)}
+    </CurrentUIContext.Provider>
+  );
+}
+
+function renderNode(
+  t: string,
+  n: Record<string, unknown>,
+  node: UINode,
+  localState: LocalUIState,
+  setLocalValue: (b: string, v: unknown, m?: ComponentInteractionMeta) => void,
+  onAIEvent: (e: AUIREvent) => void,
+) {
     return (
       <ScreenRender
         n={n}
@@ -316,6 +348,7 @@ export default function Renderer({
         n={n}
         localState={localState}
         setLocalValue={setLocalValue}
+        onAIEvent={onAIEvent}
       />
     );
   if (t === "select")
@@ -324,6 +357,7 @@ export default function Renderer({
         n={n}
         localState={localState}
         setLocalValue={setLocalValue}
+        onAIEvent={onAIEvent}
       />
     );
   if (t === "checkbox")
@@ -332,6 +366,7 @@ export default function Renderer({
         n={n}
         localState={localState}
         setLocalValue={setLocalValue}
+        onAIEvent={onAIEvent}
       />
     );
   if (t === "slider")
@@ -340,6 +375,7 @@ export default function Renderer({
         n={n}
         localState={localState}
         setLocalValue={setLocalValue}
+        onAIEvent={onAIEvent}
       />
     );
   if (t === "stepper")
@@ -348,6 +384,7 @@ export default function Renderer({
         n={n}
         localState={localState}
         setLocalValue={setLocalValue}
+        onAIEvent={onAIEvent}
       />
     );
   if (t === "local_value_display")
@@ -371,7 +408,7 @@ function RenderKids({
 }: {
   kids: UINode[];
   localState: LocalUIState;
-  setLocalValue: (b: string, v: unknown) => void;
+  setLocalValue: (b: string, v: unknown, m?: ComponentInteractionMeta) => void;
   onAIEvent: (e: AUIREvent) => void;
 }) {
   return (
@@ -392,15 +429,10 @@ function RenderKids({
 type RProps = {
   n: Record<string, unknown>;
   localState: LocalUIState;
-  setLocalValue: (b: string, v: unknown) => void;
+  setLocalValue: (b: string, v: unknown, m?: ComponentInteractionMeta) => void;
   onAIEvent: (e: AUIREvent) => void;
 };
 type RSimple = { n: Record<string, unknown> };
-type RLocal = {
-  n: Record<string, unknown>;
-  localState: LocalUIState;
-  setLocalValue: (b: string, v: unknown) => void;
-};
 type RLocalView = { n: Record<string, unknown>; localState: LocalUIState };
 
 // -----------------------------------------------------------
@@ -610,10 +642,16 @@ function PanelRender({ n, localState, setLocalValue, onAIEvent }: RProps) {
 }
 
 function TabsRender({ n, localState, setLocalValue, onAIEvent }: RProps) {
+  const currentUI = useCurrentUI();
   const [activeTab, setActiveTab] = React.useState(String(n.activeTab));
   const tabs =
     (n.tabs as Array<{ id: string; label: string; children: UINode[] }>) ?? [];
   const active = tabs.find((t: { id: string }) => t.id === activeTab);
+
+  // Sync local state when AI changes activeTab prop
+  useEffect(() => {
+    setActiveTab(String(n.activeTab));
+  }, [n.activeTab]);
 
   const handleTabClick = useCallback(
     (tabId: string) => {
@@ -629,14 +667,14 @@ function TabsRender({ n, localState, setLocalValue, onAIEvent }: RProps) {
                 String(n.id),
                 activeTab,
                 tabId,
-                createClientSnapshot(localState, null),
+                createClientSnapshot(localState, currentUI ?? null),
               ),
             );
           },
         );
       }
     },
-    [n, activeTab, localState, onAIEvent],
+    [n, activeTab, localState, currentUI, onAIEvent],
   );
 
   return (
@@ -667,6 +705,7 @@ function TabsRender({ n, localState, setLocalValue, onAIEvent }: RProps) {
 }
 
 function ModalRender({ n, localState, setLocalValue, onAIEvent }: RProps) {
+  const currentUI = useCurrentUI();
   const handleClose = useCallback(() => {
     import("./event").then(
       ({ createModalCloseEvent, createClientSnapshot }) => {
@@ -674,12 +713,12 @@ function ModalRender({ n, localState, setLocalValue, onAIEvent }: RProps) {
           createModalCloseEvent(
             String(n.id),
             String(n.closeIntent),
-            createClientSnapshot(localState, null),
+            createClientSnapshot(localState, currentUI ?? null),
           ),
         );
       },
     );
-  }, [n, localState, onAIEvent]);
+  }, [n, localState, currentUI, onAIEvent]);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
       <div className="bg-neutral-900 border border-neutral-700 rounded-xl p-6 max-w-lg w-full mx-4 max-h-[80vh] overflow-auto">
@@ -1084,6 +1123,7 @@ function ChartLineRender({ n }: RSimple) {
 // -----------------------------------------------------------
 
 function ButtonRender({ n, localState, setLocalValue, onAIEvent }: RProps) {
+  const currentUI = useCurrentUI();
   const vc: Record<string, string> = {
     primary: "bg-blue-600 hover:bg-blue-500 text-white",
     secondary: "bg-neutral-700 hover:bg-neutral-600 text-neutral-200",
@@ -1132,8 +1172,10 @@ function ButtonRender({ n, localState, setLocalValue, onAIEvent }: RProps) {
     } else if (isAI) {
       import("./event").then(
         ({ createComponentClickEvent, createClientSnapshot }) => {
-          const snapshot = interaction?.includeLocalStateOnCommit
-            ? createClientSnapshot(localState, null)
+          const includeSnapshot =
+            interaction?.includeLocalStateOnCommit !== false;
+          const snapshot = includeSnapshot
+            ? createClientSnapshot(localState, currentUI ?? null)
             : undefined;
           onAIEvent(
             createComponentClickEvent(
@@ -1161,7 +1203,15 @@ function ButtonRender({ n, localState, setLocalValue, onAIEvent }: RProps) {
         },
       );
     }
-  }, [n, localState, setLocalValue, onAIEvent, interaction, localAction]);
+  }, [
+    n,
+    localState,
+    setLocalValue,
+    onAIEvent,
+    interaction,
+    localAction,
+    currentUI,
+  ]);
 
   return (
     <button
@@ -1173,9 +1223,39 @@ function ButtonRender({ n, localState, setLocalValue, onAIEvent }: RProps) {
   );
 }
 
-function TextInputRender({ n, localState, setLocalValue }: RProps) {
+function TextInputRender({ n, localState, setLocalValue, onAIEvent }: RProps) {
+  const currentUI = useCurrentUI();
   const binding = String(n.binding);
   const value = String(resolveBindingValue(localState, binding, n.value ?? ""));
+  const interaction = n.interaction as
+    | { mode?: string; commitOn?: string[] }
+    | undefined;
+
+  const fireCommit = useCallback(
+    (trigger: string) => {
+      if (
+        interaction?.mode === "ai_transition" &&
+        interaction.commitOn?.includes(trigger)
+      ) {
+        import("./event").then(
+          ({ createComponentCommitEvent, createClientSnapshot }) => {
+            onAIEvent(
+              createComponentCommitEvent(
+                String(n.id),
+                "text_input",
+                binding,
+                n.value ?? "",
+                value,
+                createClientSnapshot(localState, currentUI ?? null),
+              ),
+            );
+          },
+        );
+      }
+    },
+    [n, binding, value, localState, currentUI, onAIEvent, interaction],
+  );
+
   return (
     <div className="flex flex-col gap-1">
       {n.label ? (
@@ -1184,7 +1264,11 @@ function TextInputRender({ n, localState, setLocalValue }: RProps) {
       <input
         type="text"
         value={value}
-        onChange={(e) => setLocalValue(binding, e.target.value)}
+        onChange={(e) => setLocalValue(binding, e.target.value, { componentId: String(n.id), componentType: "text_input", label: n.label ? String(n.label) : undefined, interactionMode: interaction?.mode })}
+        onBlur={() => fireCommit("blur")}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") fireCommit("enter");
+        }}
         placeholder={String(n.placeholder ?? "")}
         className="bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-100 placeholder-neutral-500 focus:outline-none focus:border-blue-500"
       />
@@ -1192,9 +1276,44 @@ function TextInputRender({ n, localState, setLocalValue }: RProps) {
   );
 }
 
-function NumberInputRender({ n, localState, setLocalValue }: RProps) {
+function NumberInputRender({
+  n,
+  localState,
+  setLocalValue,
+  onAIEvent,
+}: RProps) {
+  const currentUI = useCurrentUI();
   const binding = String(n.binding);
   const value = Number(resolveBindingValue(localState, binding, n.value ?? 0));
+  const interaction = n.interaction as
+    | { mode?: string; commitOn?: string[] }
+    | undefined;
+
+  const fireCommit = useCallback(
+    (trigger: string) => {
+      if (
+        interaction?.mode === "ai_transition" &&
+        interaction.commitOn?.includes(trigger)
+      ) {
+        import("./event").then(
+          ({ createComponentCommitEvent, createClientSnapshot }) => {
+            onAIEvent(
+              createComponentCommitEvent(
+                String(n.id),
+                "number_input",
+                binding,
+                n.value ?? 0,
+                value,
+                createClientSnapshot(localState, currentUI ?? null),
+              ),
+            );
+          },
+        );
+      }
+    },
+    [n, binding, value, localState, currentUI, onAIEvent, interaction],
+  );
+
   return (
     <div className="flex flex-col gap-1">
       {n.label ? (
@@ -1205,8 +1324,12 @@ function NumberInputRender({ n, localState, setLocalValue }: RProps) {
           type="number"
           value={value}
           onChange={(e) =>
-            setLocalValue(binding, parseFloat(e.target.value) || 0)
+            setLocalValue(binding, parseFloat(e.target.value) || 0, { componentId: String(n.id), componentType: "number_input", label: n.label ? String(n.label) : undefined, interactionMode: interaction?.mode })
           }
+          onBlur={() => fireCommit("blur")}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") fireCommit("enter");
+          }}
           min={n.min as number}
           max={n.max as number}
           step={n.step as number}
@@ -1220,9 +1343,39 @@ function NumberInputRender({ n, localState, setLocalValue }: RProps) {
   );
 }
 
-function TextareaRender({ n, localState, setLocalValue }: RLocal) {
+function TextareaRender({ n, localState, setLocalValue, onAIEvent }: RProps) {
+  const currentUI = useCurrentUI();
   const binding = String(n.binding);
   const value = String(resolveBindingValue(localState, binding, n.value ?? ""));
+  const interaction = n.interaction as
+    | { mode?: string; commitOn?: string[] }
+    | undefined;
+
+  const fireCommit = useCallback(
+    (trigger: string) => {
+      if (
+        interaction?.mode === "ai_transition" &&
+        interaction.commitOn?.includes(trigger)
+      ) {
+        import("./event").then(
+          ({ createComponentCommitEvent, createClientSnapshot }) => {
+            onAIEvent(
+              createComponentCommitEvent(
+                String(n.id),
+                "textarea",
+                binding,
+                n.value ?? "",
+                value,
+                createClientSnapshot(localState, currentUI ?? null),
+              ),
+            );
+          },
+        );
+      }
+    },
+    [n, binding, value, localState, currentUI, onAIEvent, interaction],
+  );
+
   return (
     <div className="flex flex-col gap-1">
       {n.label ? (
@@ -1230,17 +1383,48 @@ function TextareaRender({ n, localState, setLocalValue }: RLocal) {
       ) : null}
       <textarea
         value={value}
-        onChange={(e) => setLocalValue(binding, e.target.value)}
+        onChange={(e) => setLocalValue(binding, e.target.value, { componentId: String(n.id), componentType: "textarea", label: n.label ? String(n.label) : undefined, interactionMode: interaction?.mode })}
+        onBlur={() => fireCommit("blur")}
         className="bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-100 min-h-[80px] focus:outline-none focus:border-blue-500"
       />
     </div>
   );
 }
 
-function SelectRender({ n, localState, setLocalValue }: RLocal) {
+function SelectRender({ n, localState, setLocalValue, onAIEvent }: RProps) {
+  const currentUI = useCurrentUI();
   const binding = String(n.binding);
   const value = String(resolveBindingValue(localState, binding, n.value ?? ""));
   const options = n.options as Array<{ label: string; value: string }>;
+  const interaction = n.interaction as
+    | { mode?: string; commitOn?: string[] }
+    | undefined;
+
+  const fireCommit = useCallback(
+    (trigger: string, nextValue: string) => {
+      if (
+        interaction?.mode === "ai_transition" &&
+        interaction.commitOn?.includes(trigger)
+      ) {
+        import("./event").then(
+          ({ createComponentCommitEvent, createClientSnapshot }) => {
+            onAIEvent(
+              createComponentCommitEvent(
+                String(n.id),
+                "select",
+                binding,
+                value,
+                nextValue,
+                createClientSnapshot(localState, currentUI ?? null),
+              ),
+            );
+          },
+        );
+      }
+    },
+    [n, binding, value, localState, currentUI, onAIEvent, interaction],
+  );
+
   return (
     <div className="flex flex-col gap-1">
       {n.label ? (
@@ -1248,7 +1432,11 @@ function SelectRender({ n, localState, setLocalValue }: RLocal) {
       ) : null}
       <select
         value={value}
-        onChange={(e) => setLocalValue(binding, e.target.value)}
+        onChange={(e) => {
+          const next = e.target.value;
+          setLocalValue(binding, next, { componentId: String(n.id), componentType: "select", label: n.label ? String(n.label) : undefined, interactionMode: interaction?.mode });
+          fireCommit("change", next);
+        }}
         className="bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-100 focus:outline-none focus:border-blue-500"
       >
         {options.map((opt) => (
@@ -1261,15 +1449,49 @@ function SelectRender({ n, localState, setLocalValue }: RLocal) {
   );
 }
 
-function CheckboxRender({ n, localState, setLocalValue }: RLocal) {
+function CheckboxRender({ n, localState, setLocalValue, onAIEvent }: RProps) {
+  const currentUI = useCurrentUI();
   const binding = String(n.binding);
   const checked = Boolean(resolveBindingValue(localState, binding, n.checked));
+  const interaction = n.interaction as
+    | { mode?: string; commitOn?: string[] }
+    | undefined;
+
+  const fireCommit = useCallback(
+    (trigger: string, nextValue: boolean) => {
+      if (
+        interaction?.mode === "ai_transition" &&
+        interaction.commitOn?.includes(trigger)
+      ) {
+        import("./event").then(
+          ({ createComponentCommitEvent, createClientSnapshot }) => {
+            onAIEvent(
+              createComponentCommitEvent(
+                String(n.id),
+                "checkbox",
+                binding,
+                checked,
+                nextValue,
+                createClientSnapshot(localState, currentUI ?? null),
+              ),
+            );
+          },
+        );
+      }
+    },
+    [n, binding, checked, localState, currentUI, onAIEvent, interaction],
+  );
+
   return (
     <label className="flex items-center gap-2 cursor-pointer">
       <input
         type="checkbox"
         checked={checked}
-        onChange={(e) => setLocalValue(binding, e.target.checked)}
+        onChange={(e) => {
+          const next = e.target.checked;
+          setLocalValue(binding, next, { componentId: String(n.id), componentType: "checkbox", label: n.label ? String(n.label) : undefined, interactionMode: interaction?.mode });
+          fireCommit("change", next);
+        }}
         className="rounded bg-neutral-800 border-neutral-700 text-blue-600 focus:ring-blue-500"
       />
       <span className="text-sm text-neutral-300">{String(n.label)}</span>
@@ -1277,11 +1499,41 @@ function CheckboxRender({ n, localState, setLocalValue }: RLocal) {
   );
 }
 
-function SliderRender({ n, localState, setLocalValue }: RLocal) {
+function SliderRender({ n, localState, setLocalValue, onAIEvent }: RProps) {
+  const currentUI = useCurrentUI();
   const binding = String(n.binding);
   const raw = resolveBindingValue(localState, binding, n.value);
   const val = raw == null ? Number(n.value) : Number(raw);
   const safe = isNaN(val) ? Number(n.value) : val;
+  const interaction = n.interaction as
+    | { mode?: string; commitOn?: string[] }
+    | undefined;
+
+  const fireCommit = useCallback(
+    (trigger: string, nextValue: number) => {
+      if (
+        interaction?.mode === "ai_transition" &&
+        interaction.commitOn?.includes(trigger)
+      ) {
+        import("./event").then(
+          ({ createComponentCommitEvent, createClientSnapshot }) => {
+            onAIEvent(
+              createComponentCommitEvent(
+                String(n.id),
+                "slider",
+                binding,
+                val,
+                nextValue,
+                createClientSnapshot(localState, currentUI ?? null),
+              ),
+            );
+          },
+        );
+      }
+    },
+    [n, binding, val, localState, currentUI, onAIEvent, interaction],
+  );
+
   return (
     <div className="flex flex-col gap-1">
       {n.label ? (
@@ -1299,7 +1551,11 @@ function SliderRender({ n, localState, setLocalValue }: RLocal) {
         min={Number(n.min)}
         max={Number(n.max)}
         step={Number(n.step ?? 1)}
-        onChange={(e) => setLocalValue(binding, parseFloat(e.target.value))}
+        onChange={(e) => {
+          const next = parseFloat(e.target.value);
+          setLocalValue(binding, next, { componentId: String(n.id), componentType: "slider", label: n.label ? String(n.label) : undefined, interactionMode: interaction?.mode });
+          fireCommit("change", next);
+        }}
         className="w-full accent-blue-600"
       />
       <div className="flex justify-between text-[10px] text-neutral-600">
@@ -1316,20 +1572,52 @@ function SliderRender({ n, localState, setLocalValue }: RLocal) {
   );
 }
 
-function StepperRender({ n, localState, setLocalValue }: RLocal) {
+function StepperRender({ n, localState, setLocalValue, onAIEvent }: RProps) {
+  const currentUI = useCurrentUI();
   const binding = String(n.binding);
   const raw = resolveBindingValue(localState, binding, n.value);
   const val = raw == null ? Number(n.value) : Number(raw);
   const safe = isNaN(val) ? Number(n.value) : val;
   const step = Number(n.step ?? 1);
+  const interaction = n.interaction as
+    | { mode?: string; commitOn?: string[] }
+    | undefined;
+
+  const fireCommit = useCallback(
+    (nextValue: number) => {
+      if (
+        interaction?.mode === "ai_transition" &&
+        interaction.commitOn?.includes("change")
+      ) {
+        import("./event").then(
+          ({ createComponentCommitEvent, createClientSnapshot }) => {
+            onAIEvent(
+              createComponentCommitEvent(
+                String(n.id),
+                "stepper",
+                binding,
+                safe,
+                nextValue,
+                createClientSnapshot(localState, currentUI ?? null),
+              ),
+            );
+          },
+        );
+      }
+    },
+    [n, binding, safe, localState, currentUI, onAIEvent, interaction],
+  );
+
   const inc = useCallback(() => {
     const nxt = Math.min(Number(n.max ?? Infinity), safe + step);
-    setLocalValue(binding, nxt);
-  }, [n, safe, step, setLocalValue, binding]);
+    setLocalValue(binding, nxt, { componentId: String(n.id), componentType: "stepper", label: n.label ? String(n.label) : undefined, interactionMode: interaction?.mode });
+    fireCommit(nxt);
+  }, [n, safe, step, setLocalValue, binding, fireCommit]);
   const dec = useCallback(() => {
     const nxt = Math.max(Number(n.min ?? -Infinity), safe - step);
-    setLocalValue(binding, nxt);
-  }, [n, safe, step, setLocalValue, binding]);
+    setLocalValue(binding, nxt, { componentId: String(n.id), componentType: "stepper", label: n.label ? String(n.label) : undefined, interactionMode: interaction?.mode });
+    fireCommit(nxt);
+  }, [n, safe, step, setLocalValue, binding, fireCommit]);
   return (
     <div className="flex flex-col gap-1">
       {n.label ? (
@@ -1755,8 +2043,41 @@ function CardRender({ n, localState, setLocalValue, onAIEvent }: RProps) {
       className={`bg-neutral-900 border border-neutral-800 rounded-xl overflow-hidden flex flex-col ${gap}`}
     >
       {n.image ? (
-        <div className="w-full h-32 bg-neutral-800 flex items-center justify-center text-neutral-600 text-xs">
-          {String(n.image)}
+        <div className="w-full h-40 bg-neutral-800 overflow-hidden">
+          {(() => {
+            const src = String(n.image);
+            const isValid =
+              src.startsWith("data:") ||
+              src.startsWith("https://") ||
+              src.startsWith("/");
+            return isValid ? (
+              <img
+                src={src}
+                alt=""
+                className="w-full h-full object-cover"
+                loading="lazy"
+                onError={(e) => {
+                  e.currentTarget.style.display = "none";
+                  const next = e.currentTarget
+                    .nextElementSibling as HTMLElement | null;
+                  if (next) next.style.display = "flex";
+                }}
+              />
+            ) : null;
+          })()}
+          <div
+            className="w-full h-full items-center justify-center text-neutral-600 text-xs"
+            style={{
+              display:
+                String(n.image).startsWith("data:") ||
+                String(n.image).startsWith("https://") ||
+                String(n.image).startsWith("/")
+                  ? "none"
+                  : "flex",
+            }}
+          >
+            🖼️ {String(n.image).slice(0, 60)}
+          </div>
         </div>
       ) : null}
       <div className={n.image ? "px-4 pt-2" : "p-4"}>
@@ -1829,6 +2150,7 @@ function DescriptionListRender({ n }: RSimple) {
 }
 
 function EmptyStateRender({ n, localState, onAIEvent }: RProps) {
+  const currentUI = useCurrentUI();
   const handleAction = useCallback(() => {
     const action = n.action as { label: string; intent: string } | undefined;
     if (!action) return;
@@ -1842,12 +2164,12 @@ function EmptyStateRender({ n, localState, onAIEvent }: RProps) {
               label: action.label,
               intent: action.intent,
             },
-            createClientSnapshot(localState, null),
+            createClientSnapshot(localState, currentUI ?? null),
           ),
         );
       },
     );
-  }, [n, localState, onAIEvent]);
+  }, [n, localState, currentUI, onAIEvent]);
   return (
     <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
       {n.icon ? (

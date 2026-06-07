@@ -101,7 +101,6 @@ INTERACTIVE NODES:
   checkbox { label, checked, binding, interaction? }
   slider { label?, value, min, max, step?, unit?, binding, interaction? }
   stepper { label?, value, binding, min?, max?, step?, unit?, interaction? }
-  toggle { label, checked, binding, interaction? }
 
 EXTENDED NODES (v0.3.1):
   card { title?, subtitle?, image?, footer?:[], gap?, children[] }
@@ -138,7 +137,7 @@ Check EVERY interactive element:
   2. Every "button" with intent="ai_transition" mode MUST have an "interaction" object with mode and commitOn. If missing, add:
      interaction: { mode: "ai_transition", commitOn: ["click"] }
   3. Every "button" MUST have a "variant" field. If missing, default to "primary" for main actions, "secondary" for less important ones.
-  4. Every input node ("text_input", "number_input", "textarea", "select", "checkbox", "slider", "stepper", "toggle") MUST have a "binding" field. If missing, add one based on the label (e.g., label="Name" → binding="name").
+  4. Every input node ("text_input", "number_input", "textarea", "select", "checkbox", "slider", "stepper") MUST have a "binding" field. If missing, add one based on the label (e.g., label="Name" → binding="name").
   5. Input nodes SHOULD have "interaction" with default mode="local" unless there's a reason for ai_transition.
   6. Interactive nodes SHOULD have "semanticRole" and "expectedEffect" where it adds clarity.
   7. ALERT: detect buttons whose "label" or "intent" suggests they change page content, but lack interaction policy. Fix them.

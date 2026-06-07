@@ -79,3 +79,6 @@ Thumbs.db
 
 # OpenAI
 # API keys are in .env files (already ignored above)
+
+# Test build output
+.test-build/

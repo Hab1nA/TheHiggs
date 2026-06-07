@@ -30,20 +30,10 @@ You must output a JSON object with this top-level structure:
     "ui": { "id": "...", "type": "screen", "title": "...", "children": [...] }
   },
   "memoryPatch": { "session": [...], "app": [...], "userCandidates": [...] },
-  "toolRequests": [
-    {
-      "id": "tool_001",
-      "toolName": "webSearch",
-      "args": { "query": "..." },
-      "reason": "Need current data for ...",
-      "requiresUserConfirmation": false
-    }
-  ],
   "diagnostics": { "eventInterpretedAs": "...", "stateTransition": "...", "simulatedData": false }
 }
 
-The "toolRequests" field is OPTIONAL. Include it ONLY when you need external data before generating the UI.
-If you do not need tools, omit the "toolRequests" field entirely.
+IMPORTANT: Tool requests are handled separately before this step. Do NOT include a "toolRequests" field in your output. Focus solely on generating the UI and application state.
 This is the ONLY valid json output format. Your entire response must be exactly this json object, starting with "{" and ending with "}". No other text.
 --- END JSON OUTPUT FORMAT ---
 

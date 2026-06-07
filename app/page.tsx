@@ -7,12 +7,12 @@
 import { defaultConstraints } from "@/auir/constraints";
 import { createInitialMemory } from "@/auir/memory";
 import type {
-  AUIREvent,
-  AUIRMemory,
-  AUIRRequest,
-  AUIRResponse,
-  AUIRState,
-  LocalUIState,
+    AUIREvent,
+    AUIRMemory,
+    AUIRRequest,
+    AUIRResponse,
+    AUIRState,
+    LocalUIState,
 } from "@/auir/types";
 import AUIRInspector from "@/components/AUIRInspector";
 import DebugPanel from "@/components/DebugPanel";
@@ -23,11 +23,11 @@ import { postRuntimeLog, sendAUIRRequest } from "@/runtime/client";
 import type { PageLogContext } from "@/runtime/logging/types";
 import Renderer, { AppContextProvider } from "@/runtime/Renderer";
 import {
-  createInitialLocalUIState,
-  hydrateLocalStateFromAUIRState,
-  setLocalValue as updateLocalValue,
+    createInitialLocalUIState,
+    hydrateLocalStateFromAUIRState,
+    setLocalValue as updateLocalValue,
 } from "@/runtime/state";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 let _sessionId = `sess_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
@@ -46,11 +46,12 @@ export default function Home() {
   const [pageLogContext, setPageLogContext] = useState<PageLogContext | null>(
     null,
   );
+  const lastEventRef = useRef<AUIREvent | null>(null);
 
   const isLauncher = !auirState || auirState.app.kind === "launcher";
 
   const handleSetLocalValue = useCallback(
-    (binding: string, value: unknown) => {
+    (binding: string, value: unknown, meta?: { componentId?: string; componentType?: string; label?: string; interactionMode?: string }) => {
       setLocalState((prev) => {
         const previousValue = prev.values[binding];
         const next = updateLocalValue(prev, binding, value);
@@ -59,7 +60,12 @@ export default function Home() {
           turn,
           stage: "frontend",
           status: "success",
-          payload: { binding, previousValue, nextValue: value },
+          payload: {
+            binding,
+            previousValue,
+            nextValue: value,
+            ...(meta ? { component: meta } : {}),
+          },
         });
         return next;
       });
@@ -69,6 +75,7 @@ export default function Home() {
 
   const handleAIEvent = useCallback(
     async (event: AUIREvent, incomingPageLogContext?: PageLogContext) => {
+      lastEventRef.current = event;
       setLoading(true);
       setError(null);
       const nextTurn = turn + 1;
@@ -119,6 +126,9 @@ export default function Home() {
         if (response.diagnostics) {
           setDiagnostics(response.diagnostics as Record<string, unknown>);
         }
+        if (response.diagnostics?.simulatedData) {
+          console.warn("[TheHiggs] AI response is a mock fallback (simulatedData=true). Check runtime log for details.");
+        }
         await postRuntimeLog(requestPageLogContext, {
           type: "frontend.ai_response.applied",
           turn: nextTurn,
@@ -158,7 +168,7 @@ export default function Home() {
         setLoading(false);
       }
     },
-    [turn, memory, auirState, pageLogContext],
+    [turn, memory, auirState, pageLogContext, lastEventRef],
   );
 
   const handleRestart = useCallback(async () => {
@@ -179,6 +189,14 @@ export default function Home() {
     setPageLogContext(null);
     setLoading(false);
   }, [pageLogContext, turn]);
+
+  const handleRetry = useCallback(async () => {
+    if (lastEventRef.current) {
+      await handleAIEvent(lastEventRef.current);
+    } else {
+      await handleRestart();
+    }
+  }, [handleAIEvent, handleRestart, lastEventRef]);
 
   return (
     <>
@@ -232,7 +250,7 @@ export default function Home() {
         </div>
       )}
 
-      {error && <ErrorPanel message={error} onRetry={handleRestart} />}
+      {error && <ErrorPanel message={error} onRetry={handleRetry} />}
 
       <DebugPanel
         state={auirState}

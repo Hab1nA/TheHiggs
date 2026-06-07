@@ -20,6 +20,12 @@ export async function POST(req: Request): Promise<NextResponse> {
     );
   }
 
-  await appendRuntimeLog(event);
+  const appended = await appendRuntimeLog(event);
+  if (!appended) {
+    return NextResponse.json(
+      { ok: false, error: "Log append failed — page log not found or write error" },
+      { status: 422 },
+    );
+  }
   return NextResponse.json({ ok: true });
 }

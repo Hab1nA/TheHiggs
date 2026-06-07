@@ -5,11 +5,11 @@
 // 细化为包含详细功能、布局、交互需求的完整提示词，
 // 然后再将细化后的提示词注入 AUIR 生成流程。
 
+import { appendRuntimeLog } from "@/runtime/logging/server";
+import type { PageLogContext } from "@/runtime/logging/types";
 import { generateObject } from "ai";
 import { z } from "zod";
 import { getModel } from "./model";
-import { appendRuntimeLog } from "@/runtime/logging/server";
-import type { PageLogContext } from "@/runtime/logging/types";
 
 /** Refine 输出 schema */
 const refineOutputSchema = z.object({
@@ -54,11 +54,11 @@ production-quality user interface.
 The target system (AUIR Engine) generates semantic UI trees composed of
 components like: screen, panel, split, grid, region, tabs, container, card,
 heading, text, metric, statistic, kpi_card, stat_group, button, input,
-textarea, select, slider, stepper, checkbox, toggle, radio_group, table,
-chart_bar, chart_line, chart_pie, heatmap, gauge, radar_chart, timeline,
+textarea, select, slider, stepper, checkbox, table,
+chart_bar, chart_line, heatmap, gauge, radar_chart, timeline,
 progress, list, accordion, carousel, modal, drawer, breadcrumb, steps,
 badge, tag, alert, quote, code_block, description_list, color_swatch,
-empty_state, spacer, divider, toolbar.
+empty_state, spacer, divider, toolbar, clock, timer_refresh.
 
 CRITICAL RULES for refinement:
 1. EXPAND aggressively: a 2-word query like "计算器" should become a 200-400 word

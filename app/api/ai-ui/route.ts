@@ -18,20 +18,20 @@ export async function POST(req: Request): Promise<NextResponse<AUIRResponse>> {
   try {
     json = await req.json();
   } catch {
-    return NextResponse.json(createFallbackResponse("Invalid JSON body"), {
-      status: 400,
-    });
+    const resp = createFallbackResponse("Invalid JSON body");
+    // Best-effort: try to extract pageLogId from raw body for logging
+    await logValidationFailure(req, "Invalid JSON body");
+    return NextResponse.json(resp, { status: 400 });
   }
 
   // Validate request
   const validation = validateRequest(json);
   if (!validation.ok) {
-    return NextResponse.json(
-      createFallbackResponse(
-        `Invalid AUIRRequest: ${validation.errors.join("; ")}`,
-      ),
-      { status: 400 },
-    );
+    const errorMsg = `Invalid AUIRRequest: ${validation.errors.join("; ")}`;
+    await logValidationFailure(json, errorMsg);
+    return NextResponse.json(createFallbackResponse(errorMsg), {
+      status: 400,
+    });
   }
 
   const request = validation.value;
@@ -52,17 +52,20 @@ export async function POST(req: Request): Promise<NextResponse<AUIRResponse>> {
 
   try {
     const response = await runAIRuntime(request);
+    const isFallback = response.diagnostics?.simulatedData === true;
     await appendRuntimeLog({
       type: "api.ai_ui.response.sent",
       pageLogId: pageLogContext?.pageLogId,
       sessionId: request.session.sessionId,
       turn: request.session.turn,
       stage: "api",
-      status: "success",
+      status: isFallback ? "failure" : "success",
       durationMs: Date.now() - startedAt,
-      payload: { response },
+      payload: { response, isFallback },
     });
-    return NextResponse.json(response);
+    // Use 206 Partial Content for fallback responses so clients can distinguish
+    // real AI output from degraded mock responses.
+    return NextResponse.json(response, { status: isFallback ? 206 : 200 });
   } catch (error) {
     console.error("[API /api/ai-ui] Runtime error:", error);
     const message =
@@ -92,4 +95,26 @@ function getPageLogContext(request: AUIRRequest): PageLogContext | null {
     sessionId: request.session.sessionId,
     initialQuery: request.session.initialQuery,
   };
+}
+
+/** Best-effort logging for validation failures — extract pageLogId from raw data if possible */
+async function logValidationFailure(raw: unknown, error: string): Promise<void> {
+  try {
+    const obj = (typeof raw === "object" && raw !== null ? raw : {}) as Record<string, unknown>;
+    const session = obj.session as Record<string, unknown> | undefined;
+    const pageLogId = session?.pageLogId as string | undefined;
+    const sessionId = session?.sessionId as string | undefined;
+    if (pageLogId) {
+      await appendRuntimeLog({
+        type: "api.ai_ui.validation.failed",
+        pageLogId,
+        sessionId,
+        stage: "api",
+        status: "failure",
+        payload: { error },
+      });
+    }
+  } catch {
+    // Silently ignore — this is best-effort
+  }
 }

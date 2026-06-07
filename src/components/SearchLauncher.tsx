@@ -5,6 +5,7 @@
 "use client";
 
 import type { AUIREvent } from "@/auir/types";
+import { postRuntimeLog } from "@/runtime/client";
 import { createAppSearchEvent } from "@/runtime/event";
 import type { PageLogContext } from "@/runtime/logging/types";
 import { useCallback, useState, type FormEvent } from "react";
@@ -41,6 +42,12 @@ export default function SearchLauncher({
           });
           if (!res.ok) {
             console.error("[SearchLauncher] Refine API error:", res.status);
+            void postRuntimeLog(pageLogContext, {
+              type: "refine.frontend.http_error",
+              stage: "frontend",
+              status: "failure",
+              payload: { httpStatus: res.status, query: trimmed },
+            });
             onSearch(
               createAppSearchEvent(trimmed, {
                 thinking: thinkingMode,
@@ -71,6 +78,12 @@ export default function SearchLauncher({
             );
           } else {
             console.error("[SearchLauncher] Refine failed:", data.error);
+            void postRuntimeLog(pageLogContext, {
+              type: "refine.frontend.business_failure",
+              stage: "frontend",
+              status: "failure",
+              payload: { error: data.error, query: trimmed },
+            });
             onSearch(
               createAppSearchEvent(trimmed, {
                 thinking: thinkingMode,
@@ -81,6 +94,12 @@ export default function SearchLauncher({
           }
         } catch (err) {
           console.error("[SearchLauncher] Refine fetch error:", err);
+          void postRuntimeLog(pageLogContext, {
+            type: "refine.frontend.fetch_error",
+            stage: "frontend",
+            status: "failure",
+            payload: { error: err instanceof Error ? err.message : String(err), query: trimmed },
+          });
           onSearch(
             createAppSearchEvent(trimmed, {
               thinking: thinkingMode,

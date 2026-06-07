@@ -2,10 +2,10 @@ import { appendFile, mkdir, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { sanitizeForRuntimeLog } from "./sanitize";
 import type {
-  PageLogContext,
-  RuntimeLogAppendInput,
-  RuntimeLogEvent,
-  RuntimeLogFileRecord,
+    PageLogContext,
+    RuntimeLogAppendInput,
+    RuntimeLogEvent,
+    RuntimeLogFileRecord,
 } from "./types";
 
 const LOG_DIR = join(process.cwd(), "runtime-logs");
@@ -31,12 +31,15 @@ export async function ensurePageLog(
 
 export async function appendRuntimeLog(
   event: RuntimeLogAppendInput,
-): Promise<void> {
-  if (!isRuntimeLoggingEnabled() || !event.pageLogId) return;
+): Promise<boolean> {
+  if (!isRuntimeLoggingEnabled() || !event.pageLogId) return false;
 
   try {
     const filePath = await findLogFile(event.pageLogId);
-    if (!filePath) return;
+    if (!filePath) {
+      console.warn(`[runtime-log] No page log file found for pageLogId=${event.pageLogId}; event type=${event.type} dropped`);
+      return false;
+    }
 
     const normalized: RuntimeLogEvent = {
       ...event,
@@ -45,8 +48,10 @@ export async function appendRuntimeLog(
       payload: sanitizeForRuntimeLog(event.payload),
     };
     await appendFile(filePath, `${JSON.stringify(normalized)}\n`, "utf8");
+    return true;
   } catch (error) {
     warnLoggingFailure("appendRuntimeLog", error);
+    return false;
   }
 }
 

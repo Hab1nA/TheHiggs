@@ -10,7 +10,7 @@ const DEFAULT_MAX_STRING_LENGTH = Number(
 );
 const DEFAULT_MAX_DEPTH = 12;
 const SENSITIVE_KEY_PATTERN =
-  /(?:api[_-]?key|key|token|secret|authorization|password|cookie)/i;
+  /(?:api[_-]?key|secret[_-]?key|(?:^|[^a-zA-Z])key(?:[^a-zA-Z]|$)|token|secret|authorization|password|cookie)/i;
 const DATA_URL_PATTERN = /^data:([^;,]+)?(;base64)?,([\s\S]*)$/;
 
 export function sanitizeForRuntimeLog(
@@ -110,9 +110,17 @@ function summarizeDataUrl(value: string):
   const mime = match[1] || "text/plain";
   const isBase64 = Boolean(match[2]);
   const data = match[3] ?? "";
-  const bytes = isBase64
-    ? Buffer.from(data, "base64")
-    : Buffer.from(decodeURIComponent(data), "utf8");
+  let bytes: Buffer;
+  if (isBase64) {
+    bytes = Buffer.from(data, "base64");
+  } else {
+    try {
+      bytes = Buffer.from(decodeURIComponent(data), "utf8");
+    } catch {
+      // Malformed percent-encoding — use raw data
+      bytes = Buffer.from(data, "utf8");
+    }
+  }
 
   return {
     kind: "data-url",

@@ -185,45 +185,79 @@ export async function runAIRuntime(
         "[AI Runtime] Step 3: post-processing UI review (with placeholders)...",
       );
       try {
-        const postResult = await postProcessUIState({
-          previousUI: request.previous?.ui ?? null,
-          newUI: response.next.ui,
-          userQuery:
-            request.event.type === "app.search"
-              ? request.event.query
-              : "UI update",
-          appTitle: response.next.app?.title,
-          appKind: response.next.app?.kind,
-        }, undefined, pageLogContext);
+        const postResult = await postProcessUIState(
+          {
+            previousUI: request.previous?.ui ?? null,
+            newUI: response.next.ui,
+            userQuery:
+              request.event.type === "app.search"
+                ? request.event.query
+                : "UI update",
+            appTitle: response.next.app?.title,
+            appKind: response.next.app?.kind,
+          },
+          undefined,
+          pageLogContext,
+        );
 
         if (postResult.ok) {
-          // Merge corrected UI back
+          // Validate corrected UI against full AUIR schema before merging.
+          // The post-process AI uses generateText (not generateObject with schema),
+          // so its output may violate the schema (unsupported components, missing
+          // required fields, etc.).
+          const originalUI = response.next.ui;
           response.next.ui = postResult.correctedUI;
-
-          // Add post-process diagnostics
-          if (response.diagnostics) {
-            const ppTag = `postProcess(${postResult.changes.length} fixes)`;
-            response.diagnostics.modelUsed =
-              (response.diagnostics.modelUsed ?? "") + " + " + ppTag;
-            if (postResult.changes.length > 0) {
-              response.diagnostics.warnings = [
-                ...(response.diagnostics.warnings ?? []),
-                `Post-process: ${postResult.changes.join("; ")}`,
-              ];
+          const ppValidation = validateResponse(response, request.constraints);
+          if (!ppValidation.ok) {
+            console.warn(
+              "[AI Runtime] Post-process output failed schema validation, reverting:",
+              ppValidation.errors.join("; "),
+            );
+            response.next.ui = originalUI;
+            await appendRuntimeLog({
+              type: "runtime.post_process.schema_rejected",
+              pageLogId: pageLogContext?.pageLogId,
+              sessionId: request.session.sessionId,
+              turn: request.session.turn,
+              stage: "post_process",
+              status: "failure",
+              payload: { errors: ppValidation.errors },
+            });
+          } else {
+            // Merge corrected UI back
+            response = ppValidation.value;
+            if (response.next?.ui) {
+              beautifyLayout(response.next.ui, {
+                defaultDensity: "normal",
+                defaultGap: "md",
+              });
             }
+
+            // Add post-process diagnostics
+            if (response.diagnostics) {
+              const ppTag = `postProcess(${postResult.changes.length} fixes)`;
+              response.diagnostics.modelUsed =
+                (response.diagnostics.modelUsed ?? "") + " + " + ppTag;
+              if (postResult.changes.length > 0) {
+                response.diagnostics.warnings = [
+                  ...(response.diagnostics.warnings ?? []),
+                  `Post-process: ${postResult.changes.join("; ")}`,
+                ];
+              }
+            }
+            console.log(
+              `[AI Runtime] Post-process complete: ${postResult.changes.length} fix(es) applied`,
+            );
+            await appendRuntimeLog({
+              type: "runtime.post_process.applied",
+              pageLogId: pageLogContext?.pageLogId,
+              sessionId: request.session.sessionId,
+              turn: request.session.turn,
+              stage: "post_process",
+              status: "success",
+              payload: { changes: postResult.changes },
+            });
           }
-          console.log(
-            `[AI Runtime] Post-process complete: ${postResult.changes.length} fix(es) applied`,
-          );
-          await appendRuntimeLog({
-            type: "runtime.post_process.applied",
-            pageLogId: pageLogContext?.pageLogId,
-            sessionId: request.session.sessionId,
-            turn: request.session.turn,
-            stage: "post_process",
-            status: "success",
-            payload: { changes: postResult.changes },
-          });
         } else {
           console.warn(
             "[AI Runtime] Post-process failed, using original UI:",
@@ -318,7 +352,8 @@ export async function runAIRuntime(
       );
     }
 
-    // Fallback to mock on any error
+    // Fallback to mock on any error — inject diagnostics so the UI and
+    // runtime logs can distinguish a mock fallback from a real AI generation.
     console.log("[AI Runtime] Falling back to Mock mode");
     await appendRuntimeLog({
       type: "runtime.fallback_to_mock",
@@ -332,7 +367,16 @@ export async function runAIRuntime(
         errorName: errName,
       },
     });
-    return mockGenerateNextAUIRState(request);
+    const mockResponse = await mockGenerateNextAUIRState(request);
+    if (!mockResponse.diagnostics) {
+      mockResponse.diagnostics = {};
+    }
+    mockResponse.diagnostics.warnings = [
+      ...(mockResponse.diagnostics.warnings ?? []),
+      `Mock fallback: real AI generation failed (${errName}: ${errMsg.slice(0, 120)})`,
+    ];
+    mockResponse.diagnostics.simulatedData = true;
+    return mockResponse;
   }
 }
 
