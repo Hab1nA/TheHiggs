@@ -239,6 +239,16 @@ If an IMAGE SLOT CONTRACT is provided, you MUST:
 4. Do not leave required image slots empty.
 5. Do NOT invent new {{DOWNLOADED_IMAGE_N}} placeholders — only use the ones from the contract.
 
+--- EXTERNAL LINK NODE ---
+29. The "external_link" node renders a button-styled element that opens a URL in a new browser tab when clicked.
+   Unlike "button" nodes, "external_link" does NOT trigger an AI state transition — it is a pure navigation action.
+   - REQUIRED fields: "label" (string, button text), "url" (string, the target URL)
+   - OPTIONAL: "variant" ("primary" | "secondary" | "ghost" | "danger") — same visual styles as buttons
+   - Use semanticRole = "navigation" for external links
+   - USE "external_link" WHEN: the user wants to link to an external website, documentation, GitHub repo, etc.
+   - USE "button" INSTEAD WHEN: the action should trigger AI state transition (calculate, analyze, generate, etc.)
+   - Example: { "id": "github_link", "type": "external_link", "label": "View on GitHub", "url": "https://github.com/example/repo", "variant": "ghost", "semanticRole": "navigation", "intent": "Open GitHub repository", "expectedEffect": "User navigates to GitHub in a new tab" }
+
 --- OUTPUT FORMAT ---
 30. Output ONLY a raw JSON object. Do NOT wrap in markdown code fences. The response must start with '{' and end with '}'.
 31. Ensure all strings are properly escaped. No trailing commas. All property names must be double-quoted.

@@ -329,6 +329,7 @@ function renderNode(
         onAIEvent={onAIEvent}
       />
     );
+  if (t === "external_link") return <ExternalLinkRender n={n} />;
   if (t === "text_input")
     return (
       <TextInputRender
@@ -1226,6 +1227,29 @@ function ButtonRender({ n, localState, setLocalValue, onAIEvent }: RProps) {
     >
       {String(n.label)}
     </button>
+  );
+}
+
+function ExternalLinkRender({ n }: RSimple) {
+  const vc: Record<string, string> = {
+    primary: "bg-blue-600 hover:bg-blue-500 text-white",
+    secondary: "bg-neutral-700 hover:bg-neutral-600 text-neutral-200",
+    ghost: "bg-transparent hover:bg-neutral-800 text-neutral-300",
+    danger: "bg-red-700 hover:bg-red-600 text-white",
+  };
+  const url = String(n.url ?? "");
+  // Security: block javascript: protocol
+  if (url.toLowerCase().startsWith("javascript:")) return null;
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={`inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${vc[String(n.variant ?? "primary")]}`}
+    >
+      {String(n.label)}
+      <span className="text-xs opacity-70">↗</span>
+    </a>
   );
 }
 

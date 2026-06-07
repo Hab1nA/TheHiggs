@@ -398,6 +398,14 @@ const stepperNodeSchema = z.object({
   interaction: interactionPolicySchema.optional(),
 });
 
+export const externalLinkNodeSchema = z.object({
+  ...baseNodeExtras,
+  type: z.literal("external_link"),
+  label: z.string(),
+  url: z.string(),
+  variant: z.enum(["primary", "secondary", "ghost", "danger"]).optional(),
+});
+
 const localValueDisplayNodeSchema = z.object({
   ...baseNodeExtras,
   type: z.literal("local_value_display"),
@@ -781,6 +789,7 @@ export const uiNodeSchema = z.discriminatedUnion("type", [
   checkboxNodeSchema,
   sliderNodeSchema,
   stepperNodeSchema,
+  externalLinkNodeSchema,
   localValueDisplayNodeSchema,
   tableNodeSchema,
   metricNodeSchema,

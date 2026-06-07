@@ -408,6 +408,16 @@ export type StepperNode = BaseNode & {
   interaction?: InteractionPolicy;
 };
 
+export type ExternalLinkNode = BaseNode & {
+  type: "external_link";
+  /** 按钮显示文本 */
+  label: string;
+  /** 目标网址 */
+  url: string;
+  /** 按钮视觉风格，与 ButtonNode 一致 */
+  variant?: "primary" | "secondary" | "ghost" | "danger";
+};
+
 // -----------------------------------------------------------
 // Runtime Nodes
 // -----------------------------------------------------------
@@ -747,6 +757,7 @@ export type UINode =
   | CheckboxNode
   | SliderNode
   | StepperNode
+  | ExternalLinkNode
   | LocalValueDisplayNode
   | TableNode
   | MetricNode

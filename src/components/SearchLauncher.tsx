@@ -8,7 +8,7 @@ import type { AUIREvent } from "@/auir/types";
 import { postRuntimeLog } from "@/runtime/client";
 import { createAppSearchEvent } from "@/runtime/event";
 import type { PageLogContext } from "@/runtime/logging/types";
-import { useCallback, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 
 export default function SearchLauncher({
   onSearch,
@@ -23,6 +23,24 @@ export default function SearchLauncher({
   const [postProcessMode, setPostProcessMode] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [refining, setRefining] = useState(false);
+
+  // 从 localStorage 恢复 AI 模式开关状态（仅客户端，避免 SSR Hydration 不一致）
+  useEffect(() => {
+    setRefineMode(localStorage.getItem("thehiggs_refineMode") === "true");
+    setThinkingMode(localStorage.getItem("thehiggs_thinkingMode") === "true");
+    setPostProcessMode(localStorage.getItem("thehiggs_postProcessMode") === "true");
+  }, []);
+
+  // 持久化 AI 模式开关状态到 localStorage
+  useEffect(() => {
+    localStorage.setItem("thehiggs_refineMode", String(refineMode));
+  }, [refineMode]);
+  useEffect(() => {
+    localStorage.setItem("thehiggs_thinkingMode", String(thinkingMode));
+  }, [thinkingMode]);
+  useEffect(() => {
+    localStorage.setItem("thehiggs_postProcessMode", String(postProcessMode));
+  }, [postProcessMode]);
 
   const handleSubmit = useCallback(
     async (e: FormEvent) => {
@@ -98,7 +116,10 @@ export default function SearchLauncher({
             type: "refine.frontend.fetch_error",
             stage: "frontend",
             status: "failure",
-            payload: { error: err instanceof Error ? err.message : String(err), query: trimmed },
+            payload: {
+              error: err instanceof Error ? err.message : String(err),
+              query: trimmed,
+            },
           });
           onSearch(
             createAppSearchEvent(trimmed, {
