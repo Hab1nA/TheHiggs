@@ -3,29 +3,115 @@
 // ============================================================
 
 import { beautifyLayout } from "@/auir/beautify";
-import { createFallbackResponse } from "@/auir/fallback";
+import { createFallbackResponse, createLauncherState } from "@/auir/fallback";
 import type { AUIRRequest, AUIRResponse } from "@/auir/types";
 import { validateResponse } from "@/auir/validate";
+import { appendRuntimeLog } from "@/runtime/logging/server";
+import type { PageLogContext } from "@/runtime/logging/types";
 import {
+  buildFallbackToolResults,
   forceRealDataMarking,
   generateNextAUIRState,
   postProcessImageUrls,
 } from "./generateNextState";
 import { mockGenerateNextAUIRState } from "./mockRuntime";
 import { isMockMode } from "./model";
-import { postProcessUIState } from "./postProcessUI";
+import {
+  functionalityReview,
+  polishOrConsistencyReview,
+} from "./postProcessUI";
 import { refineUserQuery, type RefineOutput } from "./refinePrompt";
+
+/**
+ * 清理搜索事件中的陈旧记忆。
+ * 当事件是 app.search 或 perform_search 按钮点击时，
+ * 移除 comparisonMode、selectedEntry 和 imageBindings，
+ * 防止 AI 基于旧状态创建对比面板或复用旧图片。
+ *
+ * 此函数修改 request 对象本身（原地操作），
+ * 同时被前端 page.tsx 和后端 runtime 使用，确保所有路径都生效。
+ */
+function sanitizeSearchMemory(request: AUIRRequest): void {
+  const isSearchEvent =
+    request.event.type === "app.search" ||
+    (request.event.type === "component.click" &&
+      request.event.target?.intent === "perform_search");
+
+  if (!isSearchEvent) return;
+
+  // Clean stale session keys
+  if (request.memory.session) {
+    delete request.memory.session.comparisonMode;
+    delete request.memory.session.selectedEntry;
+  }
+  // Clean stale image bindings
+  if (request.memory.app) {
+    delete request.memory.app.imageBindings;
+  }
+}
 
 /** 主 AI Runtime：根据配置选择 Mock 或真实 AI 调用 */
 export async function runAIRuntime(
   request: AUIRRequest,
 ): Promise<AUIRResponse> {
+  // ── Search override: sanitize stale memory for search-like events ──
+  sanitizeSearchMemory(request);
+
+  const pageLogContext = getPageLogContext(request);
   if (isMockMode()) {
     console.log("[AI Runtime] Using Mock mode");
+    await appendRuntimeLog({
+      type: "runtime.mode.selected",
+      pageLogId: pageLogContext?.pageLogId,
+      sessionId: request.session.sessionId,
+      turn: request.session.turn,
+      stage: "runtime",
+      status: "info",
+      payload: { mode: "mock" },
+    });
     return mockGenerateNextAUIRState(request);
   }
 
+  // Short-circuit deterministic runtime commands — no AI call needed
+  if (request.event.type === "runtime.command") {
+    if (
+      request.event.command === "restart" ||
+      request.event.command === "back_to_launcher"
+    ) {
+      console.log(
+        `[AI Runtime] Short-circuit: ${request.event.command} → launcher state`,
+      );
+      await appendRuntimeLog({
+        type: "runtime.command.short_circuit",
+        pageLogId: pageLogContext?.pageLogId,
+        sessionId: request.session.sessionId,
+        turn: request.session.turn,
+        stage: "runtime",
+        status: "success",
+        payload: { command: request.event.command },
+      });
+      return {
+        protocol: "AUIR",
+        version: "0.3",
+        next: createLauncherState(),
+        diagnostics: {
+          eventInterpretedAs: `User requested ${request.event.command}`,
+          stateTransition: "any -> launcher",
+        },
+      };
+    }
+  }
+
   console.log("[AI Runtime] Using Vercel AI SDK mode");
+  await appendRuntimeLog({
+    type: "runtime.mode.selected",
+    pageLogId: pageLogContext?.pageLogId,
+    sessionId: request.session.sessionId,
+    turn: request.session.turn,
+    stage: "runtime",
+    status: "info",
+    payload: { mode: "real" },
+  });
 
   // Check if refine mode is requested (two-step AI pipeline)
   let refineResult: RefineOutput | undefined;
@@ -36,7 +122,7 @@ export async function runAIRuntime(
   ) {
     console.log("[AI Runtime] Refine mode enabled — step 1: refining query...");
     try {
-      refineResult = await refineUserQuery(request.event.query);
+      refineResult = await refineUserQuery(request.event.query, pageLogContext);
       console.log(
         "[AI Runtime] Refine complete:",
         `kind=${refineResult.appKind}, title="${refineResult.appTitle}", features=${refineResult.keyFeatures.length}`,
@@ -59,6 +145,19 @@ export async function runAIRuntime(
       `[AI Runtime] Thinking mode: ${thinking ? "enabled" : "disabled"}`,
     );
   }
+  await appendRuntimeLog({
+    type: "runtime.options.resolved",
+    pageLogId: pageLogContext?.pageLogId,
+    sessionId: request.session.sessionId,
+    turn: request.session.turn,
+    stage: "runtime",
+    status: "info",
+    payload: {
+      refine: Boolean(refineResult),
+      thinking,
+      eventType: request.event.type,
+    },
+  });
 
   // Determine post-process mode from TWO sources:
   //  1. app.search event (user's latest explicit intent — highest priority)
@@ -79,6 +178,15 @@ export async function runAIRuntime(
           : " (from session memory)"),
     );
   }
+  await appendRuntimeLog({
+    type: "runtime.post_process.resolved",
+    pageLogId: pageLogContext?.pageLogId,
+    sessionId: request.session.sessionId,
+    turn: request.session.turn,
+    stage: "runtime",
+    status: postProcess ? "success" : "skipped",
+    payload: { postProcess, postProcessFromEvent, postProcessFromMemory },
+  });
 
   // Step 2 (or direct): generate AUIR state
   console.log("[AI Runtime] Step 2: generating UI state...");
@@ -110,6 +218,17 @@ export async function runAIRuntime(
         `Schema validation failed: ${validationResult.errors.join("; ")}`,
       );
     }
+    await appendRuntimeLog({
+      type: "runtime.response.validated",
+      pageLogId: pageLogContext?.pageLogId,
+      sessionId: request.session.sessionId,
+      turn: request.session.turn,
+      stage: "validation",
+      status: validationResult.ok ? "success" : "failure",
+      payload: validationResult.ok
+        ? { app: response.next.app, diagnostics: response.diagnostics }
+        : { errors: validationResult.errors, fallback: response },
+    });
 
     // Attach refine/thinking metadata to diagnostics if available
     if (response.diagnostics) {
@@ -120,18 +239,43 @@ export async function runAIRuntime(
         response.diagnostics.modelUsed =
           (response.diagnostics.modelUsed ?? "") + " + " + tags.join(" + ");
       }
+
+      // Attach framework plan diagnostics when refine provided uiModules
+      if (refineResult?.uiModules && refineResult.uiModules.length > 0) {
+        const modulesWithTools = refineResult.uiModules.filter(
+          (m) =>
+            m.searchQueries &&
+            (m.searchQueries.web?.length || m.searchQueries.image?.length),
+        ).length;
+        const totalSearchQueries = refineResult.uiModules.reduce(
+          (sum, m) =>
+            sum +
+            (m.searchQueries?.web?.length ?? 0) +
+            (m.searchQueries?.image?.length ?? 0),
+          0,
+        );
+        (response.diagnostics as Record<string, unknown>).frameworkPlan = {
+          moduleCount: refineResult.uiModules.length,
+          modulesWithTools,
+          totalSearchQueries,
+          source: "plan-derived",
+        };
+      }
     }
 
-    // ── Step 3 (optional): Post-Process Mode ──
+    // ── Step 3 (optional): Two-Step Post-Process Mode ──
     // IMPORTANT: Post-process runs on the UI with PLACEHOLDERS (not data URLs).
     // This prevents the second AI from truncating/corrupting large data URLs.
     // Image replacement happens AFTER post-processing (Step 4).
+    //
+    // Step 1: Visual Polish (first generation) / Layout Consistency (subsequent)
+    // Step 2: Functionality Audit (always)
     if (postProcess && response?.next?.ui) {
       console.log(
-        "[AI Runtime] Step 3: post-processing UI review (with placeholders)...",
+        "[AI Runtime] Step 3: two-step post-processing (with placeholders)...",
       );
       try {
-        const postResult = await postProcessUIState({
+        const step1Input = {
           previousUI: request.previous?.ui ?? null,
           newUI: response.next.ui,
           userQuery:
@@ -140,33 +284,113 @@ export async function runAIRuntime(
               : "UI update",
           appTitle: response.next.app?.title,
           appKind: response.next.app?.kind,
-        });
+        };
 
-        if (postResult.ok) {
-          // Merge corrected UI back
-          response.next.ui = postResult.correctedUI;
+        // ── Step 3a: Visual Polish / Layout Consistency ──
+        const step1Result = await polishOrConsistencyReview(
+          step1Input,
+          pageLogContext,
+        );
 
-          // Add post-process diagnostics
-          if (response.diagnostics) {
-            const ppTag = `postProcess(${postResult.changes.length} fixes)`;
-            response.diagnostics.modelUsed =
-              (response.diagnostics.modelUsed ?? "") + " + " + ppTag;
-            if (postResult.changes.length > 0) {
-              response.diagnostics.warnings = [
-                ...(response.diagnostics.warnings ?? []),
-                `Post-process: ${postResult.changes.join("; ")}`,
-              ];
-            }
-          }
+        // Determine which UI to pass to Step 2
+        const uiForStep2 = step1Result.ok
+          ? step1Result.correctedUI
+          : response.next.ui;
+        const allChanges: string[] = step1Result.ok
+          ? [...step1Result.changes]
+          : [];
+
+        if (step1Result.ok) {
           console.log(
-            `[AI Runtime] Post-process complete: ${postResult.changes.length} fix(es) applied`,
+            `[AI Runtime] Step 3a complete: ${step1Result.changes.length} fix(es)`,
           );
         } else {
           console.warn(
-            "[AI Runtime] Post-process failed, using original UI:",
-            postResult.error,
+            "[AI Runtime] Step 3a failed, continuing to Step 2 with original UI:",
+            step1Result.error,
           );
-          // Graceful degradation: use original UI
+        }
+
+        // ── Step 3b: Functionality Audit ──
+        const step2Result = await functionalityReview(
+          { ...step1Input, newUI: uiForStep2 },
+          pageLogContext,
+        );
+
+        // Determine final UI: Step 2 result > Step 1 result > original
+        const finalUI = step2Result.ok ? step2Result.correctedUI : uiForStep2;
+
+        if (step2Result.ok) {
+          allChanges.push(...step2Result.changes);
+          console.log(
+            `[AI Runtime] Step 3b complete: ${step2Result.changes.length} fix(es)`,
+          );
+        } else {
+          console.warn(
+            "[AI Runtime] Step 3b failed, using Step 1 output:",
+            step2Result.error,
+          );
+        }
+
+        // ── Validate final UI against AUIR schema ──
+        if (allChanges.length > 0 || step1Result.ok || step2Result.ok) {
+          const originalUI = response.next.ui;
+          response.next.ui = finalUI;
+          const ppValidation = validateResponse(response, request.constraints);
+          if (!ppValidation.ok) {
+            console.warn(
+              "[AI Runtime] Post-process output failed schema validation, reverting:",
+              ppValidation.errors.join("; "),
+            );
+            response.next.ui = originalUI;
+            await appendRuntimeLog({
+              type: "runtime.post_process.schema_rejected",
+              pageLogId: pageLogContext?.pageLogId,
+              sessionId: request.session.sessionId,
+              turn: request.session.turn,
+              stage: "post_process",
+              status: "failure",
+              payload: { errors: ppValidation.errors },
+            });
+          } else {
+            // Merge corrected UI back
+            response = ppValidation.value;
+            if (response.next?.ui) {
+              beautifyLayout(response.next.ui, {
+                defaultDensity: "normal",
+                defaultGap: "md",
+              });
+            }
+
+            // Add post-process diagnostics
+            if (response.diagnostics && allChanges.length > 0) {
+              const step1Tag = step1Result.ok
+                ? `step1(${step1Result.changes.length})`
+                : "step1(skip)";
+              const step2Tag = step2Result.ok
+                ? `step2(${step2Result.changes.length})`
+                : "step2(skip)";
+              const ppTag = `postProcess(${step1Tag}+${step2Tag})`;
+              response.diagnostics.modelUsed =
+                (response.diagnostics.modelUsed ?? "") + " + " + ppTag;
+              response.diagnostics.warnings = [
+                ...(response.diagnostics.warnings ?? []),
+                `Post-process: ${allChanges.join("; ")}`,
+              ];
+            }
+            console.log(
+              `[AI Runtime] Post-process complete: ${allChanges.length} total fix(es) applied`,
+            );
+            await appendRuntimeLog({
+              type: "runtime.post_process.applied",
+              pageLogId: pageLogContext?.pageLogId,
+              sessionId: request.session.sessionId,
+              turn: request.session.turn,
+              stage: "post_process",
+              status: "success",
+              payload: { changes: allChanges },
+            });
+          }
         }
       } catch (ppErr) {
         console.error(
@@ -174,6 +398,17 @@ export async function runAIRuntime(
           (ppErr as Error).message?.slice(0, 200),
         );
         // Graceful degradation: keep original UI
+        await appendRuntimeLog({
+          type: "runtime.post_process.exception",
+          pageLogId: pageLogContext?.pageLogId,
+          sessionId: request.session.sessionId,
+          turn: request.session.turn,
+          stage: "post_process",
+          status: "failure",
+          payload: {
+            error: ppErr instanceof Error ? ppErr.message : String(ppErr),
+          },
+        });
       }
     }
 
@@ -181,12 +416,51 @@ export async function runAIRuntime(
     // Replace placeholders like {{DOWNLOADED_IMAGE_N}} with actual data URLs.
     // This runs after post-processing to prevent the second AI from seeing
     // (and potentially truncating/corrupting) large base64 data URLs.
-    if (response && toolResults.length > 0) {
-      console.log(
-        "[AI Runtime] Step 4: replacing image placeholders with data URLs...",
-      );
-      postProcessImageUrls(response, toolResults);
-      forceRealDataMarking(response, toolResults);
+    //
+    // When no tools were executed (e.g. button clicks, navigation), the AI
+    // may still emit image placeholders. In that case, we extract data URLs
+    // from the PREVIOUS UI tree and use them as fallback replacements.
+    if (response) {
+      let effectiveToolResults = toolResults;
+      let isFallback = false;
+
+      if (toolResults.length === 0) {
+        // No fresh tool results — try to salvage images from previous UI
+        const fallbackResults = buildFallbackToolResults(request.previous?.ui);
+        if (fallbackResults.length > 0) {
+          effectiveToolResults = fallbackResults;
+          isFallback = true;
+          console.log(
+            `[AI Runtime] Step 4: using ${fallbackResults.length} data URL(s) from previous UI as fallback`,
+          );
+        }
+      }
+
+      if (effectiveToolResults.length > 0) {
+        console.log(
+          "[AI Runtime] Step 4: replacing image placeholders with data URLs...",
+        );
+        postProcessImageUrls(
+          response,
+          effectiveToolResults,
+          isFallback ? undefined : genResult.imageBlueprint,
+        );
+        if (!isFallback) {
+          forceRealDataMarking(response, toolResults);
+        }
+        await appendRuntimeLog({
+          type: "runtime.tool_results.post_processed",
+          pageLogId: pageLogContext?.pageLogId,
+          sessionId: request.session.sessionId,
+          turn: request.session.turn,
+          stage: "post_runtime",
+          status: "success",
+          payload: {
+            toolResultCount: effectiveToolResults.length,
+            isFallback,
+          },
+        });
+      }
     }
 
     // ── Persist postProcess preference to session memory ──
@@ -226,8 +500,42 @@ export async function runAIRuntime(
       );
     }
 
-    // Fallback to mock on any error
+    // Fallback to mock on any error — inject diagnostics so the UI and
+    // runtime logs can distinguish a mock fallback from a real AI generation.
     console.log("[AI Runtime] Falling back to Mock mode");
-    return mockGenerateNextAUIRState(request);
+    await appendRuntimeLog({
+      type: "runtime.fallback_to_mock",
+      pageLogId: pageLogContext?.pageLogId,
+      sessionId: request.session.sessionId,
+      turn: request.session.turn,
+      stage: "runtime",
+      status: "failure",
+      payload: {
+        error: errMsg,
+        errorName: errName,
+      },
+    });
+    const mockResponse = await mockGenerateNextAUIRState(request);
+    if (!mockResponse.diagnostics) {
+      mockResponse.diagnostics = {};
+    }
+    mockResponse.diagnostics.warnings = [
+      ...(mockResponse.diagnostics.warnings ?? []),
+      `Mock fallback: real AI generation failed (${errName}: ${errMsg.slice(0, 120)})`,
+    ];
+    mockResponse.diagnostics.simulatedData = true;
+    return mockResponse;
   }
+}
+
+function getPageLogContext(request: AUIRRequest): PageLogContext | undefined {
+  if (!request.session.pageLogId || !request.session.pageStartedAt) {
+    return undefined;
+  }
+  return {
+    pageLogId: request.session.pageLogId,
+    pageStartedAt: request.session.pageStartedAt,
+    sessionId: request.session.sessionId,
+    initialQuery: request.session.initialQuery,
+  };
 }

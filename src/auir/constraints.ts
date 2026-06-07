@@ -24,6 +24,7 @@ export const ALLOWED_COMPONENTS = [
   "checkbox",
   "slider",
   "stepper",
+  "external_link",
   "local_value_display",
   "table",
   "metric",

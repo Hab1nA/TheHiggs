@@ -14,7 +14,7 @@ export function createInitialMemory(userMemory: RetrievedUserMemory[] = []): AUI
   };
 }
 
-/** 应用 memory patch 到现有 memory */
+/** 应用 memory patch 到现有 memory（由前端调用，接通 memoryPatch 管线） */
 export function applyMemoryPatch(memory: AUIRMemory, patch: AUIRMemoryPatch): AUIRMemory {
   const next = structuredClone(memory);
 
@@ -73,24 +73,54 @@ export function resetTurnMemory(memory: AUIRMemory): AUIRMemory {
 // JSON Patch 工具
 // -----------------------------------------------------------
 
-/** 对普通 object 应用 RFC 6902 JSON Patch 操作 */
+/** 对普通 object 应用 RFC 6902 JSON Patch 操作（支持嵌套路径） */
 function applyJsonPatch(
   obj: Record<string, unknown>,
   ops: JsonPatchOperation[]
 ): Record<string, unknown> {
   const result = { ...obj };
   for (const op of ops) {
-    const path = op.path;
-    // 移除前导 "/"
-    const cleanPath = path.startsWith("/") ? path.slice(1) : path;
-    switch (op.op) {
-      case "add":
-      case "replace":
-        result[cleanPath] = op.value;
-        break;
-      case "remove":
-        delete result[cleanPath];
-        break;
+    const cleanPath = op.path.startsWith("/") ? op.path.slice(1) : op.path;
+    if (!cleanPath) continue; // skip empty path
+    const segments = cleanPath.split("/");
+
+    if (segments.length === 1) {
+      // Flat path — direct access (backward compatible)
+      switch (op.op) {
+        case "add":
+        case "replace":
+          result[segments[0]] = op.value;
+          break;
+        case "remove":
+          delete result[segments[0]];
+          break;
+      }
+    } else {
+      // Nested path — walk to parent, then operate on final key
+      let current: Record<string, unknown> = result;
+      for (let i = 0; i < segments.length - 1; i++) {
+        const seg = segments[i];
+        if (typeof current[seg] !== "object" || current[seg] === null) {
+          // Intermediate path doesn't exist — create it for add/replace
+          if (op.op === "add" || op.op === "replace") {
+            current[seg] = {};
+          } else {
+            current = {};
+            break;
+          }
+        }
+        current = current[seg] as Record<string, unknown>;
+      }
+      const lastKey = segments[segments.length - 1];
+      switch (op.op) {
+        case "add":
+        case "replace":
+          current[lastKey] = op.value;
+          break;
+        case "remove":
+          delete current[lastKey];
+          break;
+      }
     }
   }
   return result;

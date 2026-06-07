@@ -4,7 +4,6 @@
 
 import { beautifyLayout } from "./beautify";
 import { defaultConstraints } from "./constraints";
-import { createFallbackResponse } from "./fallback";
 import { countNodes, maxDepth } from "./memory";
 import { auirRequestSchema, auirResponseSchema } from "./schema";
 import type { AUIRConstraints, AUIRRequest, AUIRResponse } from "./types";
@@ -121,8 +120,11 @@ export async function validateOrRetry(
   }
 
   console.error("[AUIR Validate] Retry also failed:", secondResult.errors);
-  return createFallbackResponse(
-    `Schema validation failed after retry: ${secondResult.errors.join("; ")}`,
+  // Throw so callers (e.g. generateWithRetry) can catch and attempt
+  // higher-level fallback strategies instead of silently returning a
+  // fallback AUIRResponse that looks like a real AI generation.
+  throw new Error(
+    `[AUIR Validate] Schema validation failed after retry: ${secondResult.errors.join("; ")}`,
   );
 }
 

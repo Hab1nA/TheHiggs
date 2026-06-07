@@ -67,6 +67,7 @@ Desktop.ini
 # Dev sessions
 /tmp/
 /scratch/
+/runtime-logs/
 .vscode/
 *.swp
 *.swo
@@ -78,3 +79,6 @@ Thumbs.db
 
 # OpenAI
 # API keys are in .env files (already ignored above)
+
+# Test build output
+.test-build/

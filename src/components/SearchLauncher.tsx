@@ -5,14 +5,22 @@
 "use client";
 
 import type { AUIREvent } from "@/auir/types";
+import { postRuntimeLog } from "@/runtime/client";
 import { createAppSearchEvent } from "@/runtime/event";
-import { useCallback, useState, type FormEvent } from "react";
+import type { PageLogContext } from "@/runtime/logging/types";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 
 export default function SearchLauncher({
   onSearch,
   disabled,
 }: {
-  onSearch: (event: AUIREvent) => void;
+  onSearch: (event: AUIREvent, pageLogContext?: PageLogContext) => void;
   disabled?: boolean;
 }) {
   const [query, setQuery] = useState("");
@@ -22,11 +30,48 @@ export default function SearchLauncher({
   const [showSettings, setShowSettings] = useState(false);
   const [refining, setRefining] = useState(false);
 
+  // Guard ref: prevents persist effects from overwriting localStorage with
+  // default `false` values before the restore effect has finished. The flag
+  // is deferred via setTimeout(0) so it becomes `true` only after all effects
+  // in the current render batch have executed (critical for React 19 StrictMode
+  // where effects are double-invoked: setup → cleanup → setup).
+  const restoredRef = useRef(false);
+
+  // 从 localStorage 恢复 AI 模式开关状态（仅客户端，避免 SSR Hydration 不一致）
+  useEffect(() => {
+    setRefineMode(localStorage.getItem("thehiggs_refineMode") === "true");
+    setThinkingMode(localStorage.getItem("thehiggs_thinkingMode") === "true");
+    setPostProcessMode(
+      localStorage.getItem("thehiggs_postProcessMode") === "true",
+    );
+    // Defer the flag to the next macrotask so that persist effects running
+    // in the same batch (with stale `false` state) are skipped.
+    const timer = setTimeout(() => {
+      restoredRef.current = true;
+    }, 0);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // 持久化 AI 模式开关状态到 localStorage（仅在 restore 完成后写入）
+  useEffect(() => {
+    if (!restoredRef.current) return;
+    localStorage.setItem("thehiggs_refineMode", String(refineMode));
+  }, [refineMode]);
+  useEffect(() => {
+    if (!restoredRef.current) return;
+    localStorage.setItem("thehiggs_thinkingMode", String(thinkingMode));
+  }, [thinkingMode]);
+  useEffect(() => {
+    if (!restoredRef.current) return;
+    localStorage.setItem("thehiggs_postProcessMode", String(postProcessMode));
+  }, [postProcessMode]);
+
   const handleSubmit = useCallback(
     async (e: FormEvent) => {
       e.preventDefault();
       const trimmed = query.trim();
       if (!trimmed || disabled || refining) return;
+      const pageLogContext = createPageLogContext(trimmed);
 
       if (refineMode) {
         // Two-step: refine first, then search
@@ -35,15 +80,22 @@ export default function SearchLauncher({
           const res = await fetch("/api/refine", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ query: trimmed }),
+            body: JSON.stringify({ query: trimmed, pageLogContext }),
           });
           if (!res.ok) {
             console.error("[SearchLauncher] Refine API error:", res.status);
+            void postRuntimeLog(pageLogContext, {
+              type: "refine.frontend.http_error",
+              stage: "frontend",
+              status: "failure",
+              payload: { httpStatus: res.status, query: trimmed },
+            });
             onSearch(
               createAppSearchEvent(trimmed, {
                 thinking: thinkingMode,
                 postProcess: postProcessMode,
               }),
+              pageLogContext,
             );
             return;
           }
@@ -64,23 +116,41 @@ export default function SearchLauncher({
                   suggestedComponents: data.suggestedComponents,
                 },
               }),
+              pageLogContext,
             );
           } else {
             console.error("[SearchLauncher] Refine failed:", data.error);
+            void postRuntimeLog(pageLogContext, {
+              type: "refine.frontend.business_failure",
+              stage: "frontend",
+              status: "failure",
+              payload: { error: data.error, query: trimmed },
+            });
             onSearch(
               createAppSearchEvent(trimmed, {
                 thinking: thinkingMode,
                 postProcess: postProcessMode,
               }),
+              pageLogContext,
             );
           }
         } catch (err) {
           console.error("[SearchLauncher] Refine fetch error:", err);
+          void postRuntimeLog(pageLogContext, {
+            type: "refine.frontend.fetch_error",
+            stage: "frontend",
+            status: "failure",
+            payload: {
+              error: err instanceof Error ? err.message : String(err),
+              query: trimmed,
+            },
+          });
           onSearch(
             createAppSearchEvent(trimmed, {
               thinking: thinkingMode,
               postProcess: postProcessMode,
             }),
+            pageLogContext,
           );
         } finally {
           setRefining(false);
@@ -97,6 +167,7 @@ export default function SearchLauncher({
             thinking: thinkingMode,
             postProcess: postProcessMode,
           }),
+          pageLogContext,
         );
       }
     },
@@ -402,4 +473,12 @@ export default function SearchLauncher({
       </div>
     </div>
   );
+}
+
+function createPageLogContext(initialQuery: string): PageLogContext {
+  return {
+    pageLogId: `page_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    pageStartedAt: new Date().toISOString(),
+    initialQuery,
+  };
 }

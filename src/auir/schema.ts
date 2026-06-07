@@ -223,6 +223,49 @@ const metricNodeSchema = z.object({
   confidence: z.enum(["real", "simulated", "estimated"]).optional(),
 });
 
+export const imageSlotPlanItemSchema = z.object({
+  slotId: z.string().describe("Unique slot identifier, e.g. s1, s2"),
+  purpose: z
+    .string()
+    .describe(
+      "Semantic purpose for this image, e.g. hero cover, card thumbnail, section illustration",
+    ),
+  queryCandidates: z
+    .array(z.string())
+    .min(1)
+    .max(4)
+    .describe("2-4 precise search queries for this slot"),
+  preferredAspect: z
+    .enum(["16:9", "4:3", "3:2", "1:1", "3:4", "auto"])
+    .optional()
+    .describe("Preferred aspect ratio when multiple candidates exist"),
+  required: z
+    .boolean()
+    .optional()
+    .default(true)
+    .describe("Whether the final UI must include an image for this slot"),
+  bindTarget: z.object({
+    type: z.enum(["image", "card"]),
+    nodeId: z.string().optional(),
+    sectionHint: z.string().optional(),
+  }),
+});
+
+export const imageBlueprintSchema = z.object({
+  summary: z
+    .string()
+    .optional()
+    .describe("Short summary of why these images are needed"),
+  slots: z
+    .array(imageSlotPlanItemSchema)
+    .min(0)
+    .max(12)
+    .describe("Planned image slots that need real images"),
+});
+
+export type ImageSlotPlanItem = z.infer<typeof imageSlotPlanItemSchema>;
+export type ImageBlueprint = z.infer<typeof imageBlueprintSchema>;
+
 const alertNodeSchema = z.object({
   ...baseNodeExtras,
   type: z.literal("alert"),
@@ -263,6 +306,11 @@ const localActionSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("toggle"),
     binding: z.string(),
+  }),
+  z.object({
+    type: z.literal("append_text"),
+    targetBinding: z.string(),
+    text: z.string(),
   }),
 ]);
 
@@ -353,6 +401,14 @@ const stepperNodeSchema = z.object({
   step: z.number().optional(),
   unit: z.string().optional(),
   interaction: interactionPolicySchema.optional(),
+});
+
+export const externalLinkNodeSchema = z.object({
+  ...baseNodeExtras,
+  type: z.literal("external_link"),
+  label: z.string(),
+  url: z.string(),
+  variant: z.enum(["primary", "secondary", "ghost", "danger"]).optional(),
 });
 
 const localValueDisplayNodeSchema = z.object({
@@ -738,6 +794,7 @@ export const uiNodeSchema = z.discriminatedUnion("type", [
   checkboxNodeSchema,
   sliderNodeSchema,
   stepperNodeSchema,
+  externalLinkNodeSchema,
   localValueDisplayNodeSchema,
   tableNodeSchema,
   metricNodeSchema,
@@ -911,6 +968,9 @@ export const auirSessionSchema = z.object({
   sessionId: z.string(),
   appId: z.string().optional(),
   turn: z.number(),
+  pageLogId: z.string().optional(),
+  pageStartedAt: z.string().optional(),
+  initialQuery: z.string().optional(),
 });
 
 export const auirAppDescriptorSchema = z.object({
