@@ -4,12 +4,14 @@
 
 import type { AUIRToolDescriptor } from "@/auir/types";
 import type {
+  ImageSearchOutput,
+  ImageSearchParams,
   ResourceDownloadOutput,
   ResourceDownloadParams,
   WebSearchOutput,
   WebSearchParams,
 } from "./webTools";
-import { downloadResource, webSearch } from "./webTools";
+import { downloadResource, imageSearch, webSearch } from "./webTools";
 
 /** MVP 可用工具列表 */
 export const availableTools: AUIRToolDescriptor[] = [
@@ -36,6 +38,36 @@ export const availableTools: AUIRToolDescriptor[] = [
         language: {
           type: "string",
           description: "Search language preference (e.g., 'zh-CN', 'en').",
+        },
+      },
+      required: ["query"],
+    },
+    outputTrustLevel: "real",
+    requiresUserConfirmation: false,
+  },
+  {
+    name: "imageSearch",
+    description:
+      "Search for images on the web. Returns direct image URLs (thumbnails and full-size) " +
+      "that can be used in 'image' nodes. Use this when the user needs visual content: " +
+      "photos, illustrations, diagrams, logos, icons, or any visual reference. " +
+      "Multiple providers are used automatically (Google images, Pixabay, Pexels, Bing). " +
+      "PREFER this over webSearch when images are specifically needed.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description: "Image search query. Be descriptive (e.g., 'SpaceX rocket launch' not just 'rocket').",
+        },
+        maxResults: {
+          type: "number",
+          description: "Maximum number of image results (1-20, default 5).",
+        },
+        imageType: {
+          type: "string",
+          enum: ["photo", "illustration", "all"],
+          description: "Image type filter. Default: 'all'.",
         },
       },
       required: ["query"],
@@ -163,6 +195,22 @@ export async function executeTool(
       const output: WebSearchOutput = await webSearch(params);
       return { result: output, source: "real" };
     }
+    case "imageSearch": {
+      const params: ImageSearchParams = {
+        query: String(args.query ?? ""),
+        maxResults:
+          typeof args.maxResults === "number" ? args.maxResults : undefined,
+        imageType:
+          typeof args.imageType === "string"
+            ? (args.imageType as ImageSearchParams["imageType"])
+            : undefined,
+      };
+      if (!params.query.trim()) {
+        return { result: { error: "Empty image search query" }, source: "real" };
+      }
+      const imgOutput: ImageSearchOutput = await imageSearch(params);
+      return { result: imgOutput, source: "real" };
+    }
     case "downloadResource": {
       const params: ResourceDownloadParams = {
         url: String(args.url ?? ""),
@@ -236,6 +284,18 @@ export function executeToolSync(
           searchedAt: new Date().toISOString(),
           error:
             "Web search is not available in mock mode. Use real API key for live search.",
+        },
+        source: "simulated",
+      };
+    }
+    case "imageSearch": {
+      return {
+        result: {
+          query: String(args.query ?? ""),
+          results: [],
+          searchedAt: new Date().toISOString(),
+          error:
+            "Image search is not available in mock mode. Use real API key for live search.",
         },
         source: "simulated",
       };

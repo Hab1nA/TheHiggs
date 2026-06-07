@@ -14,18 +14,19 @@ export async function POST(req: Request): Promise<NextResponse<AUIRResponse>> {
   try {
     json = await req.json();
   } catch {
-    return NextResponse.json(
-      createFallbackResponse("Invalid JSON body"),
-      { status: 400 }
-    );
+    return NextResponse.json(createFallbackResponse("Invalid JSON body"), {
+      status: 400,
+    });
   }
 
   // Validate request
   const validation = validateRequest(json);
   if (!validation.ok) {
     return NextResponse.json(
-      createFallbackResponse(`Invalid AUIRRequest: ${validation.errors.join("; ")}`),
-      { status: 400 }
+      createFallbackResponse(
+        `Invalid AUIRRequest: ${validation.errors.join("; ")}`,
+      ),
+      { status: 400 },
     );
   }
 
@@ -36,10 +37,11 @@ export async function POST(req: Request): Promise<NextResponse<AUIRResponse>> {
     return NextResponse.json(response);
   } catch (error) {
     console.error("[API /api/ai-ui] Runtime error:", error);
-    const message = error instanceof Error ? error.message : "Unknown runtime error";
+    const message =
+      error instanceof Error ? error.message : "Unknown runtime error";
     return NextResponse.json(
       createFallbackResponse(`AI runtime failed: ${message}`),
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

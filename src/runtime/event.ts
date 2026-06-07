@@ -38,6 +38,7 @@ export function createAppSearchEvent(
   opts?: {
     refine?: boolean;
     thinking?: boolean;
+    postProcess?: boolean;
     refinedPrompt?: string;
     refinedContext?: {
       appKind?: string;
@@ -56,6 +57,7 @@ export function createAppSearchEvent(
     query,
     refine: opts?.refine,
     thinking: opts?.thinking,
+    postProcess: opts?.postProcess,
     refinedPrompt: opts?.refinedPrompt,
     refinedContext: opts?.refinedContext,
   };
@@ -121,6 +123,26 @@ export function createRuntimeCommandEvent(
     type: "runtime.command",
     command,
     clientSnapshot,
+  };
+}
+
+/** 创建 timer.refresh 事件 — 由 timer_refresh 元素在倒计时结束后触发 */
+export function createTimerRefreshEvent(
+  timerId: string,
+  context?: {
+    appId?: string;
+    appTitle?: string;
+    appKind?: string;
+  },
+): AUIREvent {
+  return {
+    eventId: createEventId(),
+    timestamp: ts(),
+    type: "timer.refresh",
+    timerId,
+    appId: context?.appId,
+    appTitle: context?.appTitle,
+    appKind: context?.appKind,
   };
 }
 

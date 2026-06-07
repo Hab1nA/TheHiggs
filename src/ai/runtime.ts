@@ -7,6 +7,7 @@ import { validateOrRetry } from "@/auir/validate";
 import { generateNextAUIRState } from "./generateNextState";
 import { mockGenerateNextAUIRState } from "./mockRuntime";
 import { isMockMode } from "./model";
+import { postProcessUIState } from "./postProcessUI";
 import { refineUserQuery, type RefineOutput } from "./refinePrompt";
 
 /** 主 AI Runtime：根据配置选择 Mock 或真实 AI 调用 */
@@ -53,6 +54,26 @@ export async function runAIRuntime(
     );
   }
 
+  // Determine post-process mode from TWO sources:
+  //  1. app.search event (user's latest explicit intent — highest priority)
+  //  2. session memory (persisted preference from a previous turn)
+  const postProcessFromEvent =
+    request.event.type === "app.search" ? request.event.postProcess : undefined;
+  const postProcessFromMemory = request.memory?.session?.postProcess as
+    | boolean
+    | undefined;
+  // Event overrides memory: user can toggle on/off at any search
+  const postProcess = postProcessFromEvent ?? postProcessFromMemory ?? false;
+
+  if (postProcess) {
+    console.log(
+      "[AI Runtime] Post-Process mode: enabled" +
+        (postProcessFromEvent !== undefined
+          ? " (from event)"
+          : " (from session memory)"),
+    );
+  }
+
   // Step 2 (or direct): generate AUIR state
   console.log("[AI Runtime] Step 2: generating UI state...");
   try {
@@ -70,6 +91,74 @@ export async function runAIRuntime(
         response.diagnostics.modelUsed =
           (response.diagnostics.modelUsed ?? "") + " + " + tags.join(" + ");
       }
+    }
+
+    // ── Step 3 (optional): Post-Process Mode ──
+    // When enabled, send the generated UI to a second AI for quality review.
+    // The reviewer checks: functional consistency, layout aesthetics,
+    // and positional stability (same elements stay at same positions).
+    if (postProcess && response?.next?.ui) {
+      console.log("[AI Runtime] Step 3: post-processing UI review...");
+      try {
+        const postResult = await postProcessUIState({
+          previousUI: request.previous?.ui ?? null,
+          newUI: response.next.ui,
+          userQuery:
+            request.event.type === "app.search"
+              ? request.event.query
+              : "UI update",
+          appTitle: response.next.app?.title,
+          appKind: response.next.app?.kind,
+        });
+
+        if (postResult.ok) {
+          // Merge corrected UI back
+          response.next.ui = postResult.correctedUI;
+
+          // Add post-process diagnostics
+          if (response.diagnostics) {
+            const ppTag = `postProcess(${postResult.changes.length} fixes)`;
+            response.diagnostics.modelUsed =
+              (response.diagnostics.modelUsed ?? "") + " + " + ppTag;
+            if (postResult.changes.length > 0) {
+              response.diagnostics.warnings = [
+                ...(response.diagnostics.warnings ?? []),
+                `Post-process: ${postResult.changes.join("; ")}`,
+              ];
+            }
+          }
+          console.log(
+            `[AI Runtime] Post-process complete: ${postResult.changes.length} fix(es) applied`,
+          );
+        } else {
+          console.warn(
+            "[AI Runtime] Post-process failed, using original UI:",
+            postResult.error,
+          );
+          // Graceful degradation: use original UI
+        }
+      } catch (ppErr) {
+        console.error(
+          "[AI Runtime] Post-process exception, using original UI:",
+          (ppErr as Error).message?.slice(0, 200),
+        );
+        // Graceful degradation: keep original UI
+      }
+    }
+
+    // ── Persist postProcess preference to session memory ──
+    // When the user explicitly sets postProcess on an app.search event,
+    // write it into the response's session memory so subsequent turns
+    // (button clicks, input commits, tab changes, etc.) inherit the setting.
+    if (postProcessFromEvent !== undefined) {
+      if (!response.next.memory) {
+        response.next.memory = { app: {}, session: {} };
+      }
+      (response.next.memory.session as Record<string, unknown>).postProcess =
+        postProcessFromEvent;
+      console.log(
+        `[AI Runtime] Persisted postProcess=${postProcessFromEvent} to session memory for future turns`,
+      );
     }
 
     return response;

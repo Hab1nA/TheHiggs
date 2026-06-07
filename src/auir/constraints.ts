@@ -56,6 +56,8 @@ export const ALLOWED_COMPONENTS = [
   "radar_chart",
   "stat_group",
   "steps",
+  "clock",
+  "timer_refresh",
 ] as const;
 
 export const defaultConstraints: AUIRConstraints = {

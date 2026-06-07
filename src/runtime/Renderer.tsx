@@ -321,6 +321,9 @@ export default function Renderer({
     );
   if (t === "local_value_display")
     return <LocalValueDisplayRender n={n} localState={localState} />;
+  if (t === "clock") return <ClockRender n={n} />;
+  if (t === "timer_refresh")
+    return <TimerRefreshRender n={n} onAIEvent={onAIEvent} />;
 
   return <div className="text-neutral-500 text-xs p-2">Unknown: {t}</div>;
 }
@@ -796,6 +799,169 @@ function AlertRender({ n }: RSimple) {
         <div className="font-semibold mb-1">{String(n.title)}</div>
       ) : null}
       <div className="text-sm">{String(n.message)}</div>
+    </div>
+  );
+}
+
+function ClockRender({ n }: RSimple) {
+  const [now, setNow] = React.useState(() => new Date());
+  const interval = Number(n.interval ?? 1000);
+
+  React.useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), interval);
+    return () => clearInterval(id);
+  }, [interval]);
+
+  const format = String(n.format ?? "time");
+  const tz = n.timezone ? String(n.timezone) : undefined;
+  const variant = String(n.variant ?? "default");
+
+  let display: string;
+  if (format === "iso") {
+    display = now.toISOString();
+  } else {
+    const opts: Intl.DateTimeFormatOptions =
+      format === "time"
+        ? {
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+            timeZone: tz,
+          }
+        : format === "date"
+          ? { year: "numeric", month: "2-digit", day: "2-digit", timeZone: tz }
+          : {
+              year: "numeric",
+              month: "2-digit",
+              day: "2-digit",
+              hour: "2-digit",
+              minute: "2-digit",
+              second: "2-digit",
+              timeZone: tz,
+            };
+    display = now.toLocaleString(undefined, opts);
+  }
+
+  const variantClasses: Record<string, string> = {
+    default: "text-lg font-mono tabular-nums text-neutral-100",
+    mono: "text-lg font-mono tabular-nums tracking-widest text-green-400",
+    large: "text-3xl font-bold font-mono tabular-nums text-neutral-100",
+  };
+
+  return (
+    <div className="flex flex-col items-center gap-1">
+      {n.label ? (
+        <span className="text-xs text-neutral-400">{String(n.label)}</span>
+      ) : null}
+      <span className={variantClasses[variant] ?? variantClasses.default}>
+        {display}
+      </span>
+    </div>
+  );
+}
+
+// -----------------------------------------------------------
+// Timer Refresh — 计时触发刷新器
+// -----------------------------------------------------------
+
+function TimerRefreshRender({
+  n,
+  onAIEvent,
+}: {
+  n: Record<string, unknown>;
+  onAIEvent: (e: AUIREvent) => void;
+}) {
+  const seconds = Number(n.seconds ?? 3);
+  const message = n.message ? String(n.message) : "AI 正在处理...";
+  const showProgress = Boolean(n.showProgress ?? true);
+  const [remaining, setRemaining] = React.useState(seconds);
+  const [fired, setFired] = React.useState(false);
+
+  React.useEffect(() => {
+    if (fired) return;
+    if (remaining <= 0) {
+      setFired(true);
+      // Dynamically import to avoid circular dependency
+      import("./event").then(({ createTimerRefreshEvent }) => {
+        onAIEvent(
+          createTimerRefreshEvent(String(n.id), {
+            appId: undefined,
+            appTitle: undefined,
+            appKind: undefined,
+          }),
+        );
+      });
+      return;
+    }
+    const id = setTimeout(() => setRemaining((r) => r - 1), 1000);
+    return () => clearTimeout(id);
+  }, [remaining, fired, n.id, onAIEvent]);
+
+  const pct = Math.round(((seconds - remaining) / Math.max(seconds, 1)) * 100);
+  const tone = fired ? "success" : "primary";
+
+  return (
+    <div className="flex flex-col items-center gap-3 py-6">
+      {/* Spinner + message */}
+      <div className="flex items-center gap-3">
+        {fired ? (
+          <svg
+            className="w-5 h-5 text-green-400"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M5 13l4 4L19 7"
+            />
+          </svg>
+        ) : (
+          <svg
+            className="w-5 h-5 text-blue-400 animate-spin"
+            fill="none"
+            viewBox="0 0 24 24"
+          >
+            <circle
+              className="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              strokeWidth="4"
+            />
+            <path
+              className="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+            />
+          </svg>
+        )}
+        <span className="text-sm text-neutral-300">
+          {fired ? "正在刷新..." : message}
+        </span>
+      </div>
+
+      {/* Countdown badge */}
+      {!fired && (
+        <span className="text-xs text-neutral-500 font-mono tabular-nums">
+          {remaining}s 后自动刷新
+        </span>
+      )}
+
+      {/* Progress bar */}
+      {showProgress && (
+        <div className="w-64 h-1.5 bg-neutral-800 rounded-full overflow-hidden">
+          <div
+            className={`h-full rounded-full transition-all duration-1000 ease-linear ${
+              tone === "success" ? "bg-green-500" : "bg-blue-500"
+            }`}
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+      )}
     </div>
   );
 }

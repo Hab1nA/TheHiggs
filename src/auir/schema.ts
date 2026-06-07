@@ -691,6 +691,29 @@ const stepsNodeSchema = z.object({
   ),
 });
 
+const clockNodeSchema = z.object({
+  ...baseNodeExtras,
+  type: z.literal("clock"),
+  format: z.enum(["time", "date", "datetime", "iso"]).optional(),
+  timezone: z.string().optional(),
+  interval: z.number().optional(),
+  label: z.string().optional(),
+  variant: z.enum(["default", "mono", "large"]).optional(),
+});
+
+const timerRefreshNodeSchema = z.object({
+  ...baseNodeExtras,
+  type: z.literal("timer_refresh"),
+  seconds: z
+    .number()
+    .min(1)
+    .max(300)
+    .default(3)
+    .describe("延迟秒数（1-300），默认 3 秒"),
+  message: z.string().optional().describe("倒计时期间显示的提示消息"),
+  showProgress: z.boolean().optional().describe("是否显示进度条"),
+});
+
 // -----------------------------------------------------------
 // UINode — Discriminated Union of all node types
 // -----------------------------------------------------------
@@ -747,6 +770,8 @@ export const uiNodeSchema = z.discriminatedUnion("type", [
   radarChartNodeSchema,
   statGroupNodeSchema,
   stepsNodeSchema,
+  clockNodeSchema,
+  timerRefreshNodeSchema,
 ]);
 
 // -----------------------------------------------------------
@@ -771,6 +796,7 @@ export const appSearchEventSchema = z.object({
   query: z.string(),
   refine: z.boolean().optional(),
   thinking: z.boolean().optional(),
+  postProcess: z.boolean().optional(),
   refinedPrompt: z.string().optional(),
   refinedContext: z
     .object({
@@ -856,6 +882,16 @@ export const runtimeCommandEventSchema = z.object({
   clientSnapshot: clientSnapshotSchema.optional(),
 });
 
+export const timerRefreshEventSchema = z.object({
+  eventId: z.string(),
+  timestamp: z.string(),
+  type: z.literal("timer.refresh"),
+  timerId: z.string(),
+  appId: z.string().optional(),
+  appTitle: z.string().optional(),
+  appKind: z.string().optional(),
+});
+
 export const auirEventSchema = z.discriminatedUnion("type", [
   appSearchEventSchema,
   componentClickEventSchema,
@@ -864,6 +900,7 @@ export const auirEventSchema = z.discriminatedUnion("type", [
   tabChangeEventSchema,
   modalCloseEventSchema,
   runtimeCommandEventSchema,
+  timerRefreshEventSchema,
 ]);
 
 // -----------------------------------------------------------

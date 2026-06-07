@@ -689,6 +689,37 @@ export type StepsNode = BaseNode & {
   }[];
 };
 
+/** 动态时钟 — 客户端实时更新，无需 AI 调用 */
+export type ClockNode = BaseNode & {
+  type: "clock";
+  /** 显示格式 */
+  format?: "time" | "date" | "datetime" | "iso";
+  /** IANA 时区，如 "Asia/Shanghai" */
+  timezone?: string;
+  /** 更新间隔（毫秒），默认 1000 */
+  interval?: number;
+  /** 可选标签 */
+  label?: string;
+  /** 显示风格 */
+  variant?: "default" | "mono" | "large";
+};
+
+/** 计时触发刷新器 — 延迟指定秒数后将当前 UI 原样回传 AI 重新生成。
+ *
+ * 用于解决 AI 生成"正在加载/思考中"占位 UI 后无法自动刷新的问题。
+ * AI 在生成含加载状态（搜索、数据处理等）的页面时，应放置此元素，
+ * 使页面在指定延迟后自动触发新一轮生成。
+ */
+export type TimerRefreshNode = BaseNode & {
+  type: "timer_refresh";
+  /** 延迟秒数，到达后自动触发 UI 刷新。默认 3 秒，最短 1 秒。 */
+  seconds: number;
+  /** 倒计时期间显示的消息，如 "AI 正在整理数据..." */
+  message?: string;
+  /** 是否在倒计时期间显示进度条 */
+  showProgress?: boolean;
+};
+
 // -----------------------------------------------------------
 // UINode Union
 // -----------------------------------------------------------
@@ -744,7 +775,9 @@ export type UINode =
   | ColorSwatchNode
   | RadarChartNode
   | StatGroupNode
-  | StepsNode;
+  | StepsNode
+  | ClockNode
+  | TimerRefreshNode;
 
 // -----------------------------------------------------------
 // Event 协议
@@ -785,6 +818,8 @@ export type AppSearchEvent = {
   refine?: boolean;
   /** 是否启用 DeepSeek Thinking Mode（思维链推理） */
   thinking?: boolean;
+  /** 是否启用 AI Post-Process Mode（生成后由第二个 AI 审查修正 UI） */
+  postProcess?: boolean;
   /** AI 细化后的详细提示词（由 refine 步骤填入） */
   refinedPrompt?: string;
   /** 细化结果的补充上下文 */
@@ -867,6 +902,20 @@ export type RuntimeCommandEvent = {
   clientSnapshot?: ClientSnapshot;
 };
 
+/** 计时刷新事件 — 由 timer_refresh 元素在倒计时结束后自动触发。
+ *  AI 收到此事件后应基于当前 UI 上下文重新生成完整的 UI。 */
+export type TimerRefreshEvent = {
+  eventId: string;
+  timestamp: string;
+  type: "timer.refresh";
+  /** 触发此事件的 timer_refresh 节点 id */
+  timerId: string;
+  /** 当前 App 信息（用于保持上下文） */
+  appId?: string;
+  appTitle?: string;
+  appKind?: string;
+};
+
 export type AUIREvent =
   | AppSearchEvent
   | ComponentClickEvent
@@ -874,7 +923,8 @@ export type AUIREvent =
   | FormSubmitEvent
   | TabChangeEvent
   | ModalCloseEvent
-  | RuntimeCommandEvent;
+  | RuntimeCommandEvent
+  | TimerRefreshEvent;
 
 // -----------------------------------------------------------
 // Memory 系统

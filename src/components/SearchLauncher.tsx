@@ -18,6 +18,7 @@ export default function SearchLauncher({
   const [query, setQuery] = useState("");
   const [refineMode, setRefineMode] = useState(false);
   const [thinkingMode, setThinkingMode] = useState(false);
+  const [postProcessMode, setPostProcessMode] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [refining, setRefining] = useState(false);
 
@@ -38,7 +39,12 @@ export default function SearchLauncher({
           });
           if (!res.ok) {
             console.error("[SearchLauncher] Refine API error:", res.status);
-            onSearch(createAppSearchEvent(trimmed, { thinking: thinkingMode }));
+            onSearch(
+              createAppSearchEvent(trimmed, {
+                thinking: thinkingMode,
+                postProcess: postProcessMode,
+              }),
+            );
             return;
           }
           const data = await res.json();
@@ -47,6 +53,7 @@ export default function SearchLauncher({
               createAppSearchEvent(trimmed, {
                 refine: true,
                 thinking: thinkingMode,
+                postProcess: postProcessMode,
                 refinedPrompt: data.refinedPrompt,
                 refinedContext: {
                   appKind: data.appKind,
@@ -60,19 +67,48 @@ export default function SearchLauncher({
             );
           } else {
             console.error("[SearchLauncher] Refine failed:", data.error);
-            onSearch(createAppSearchEvent(trimmed, { thinking: thinkingMode }));
+            onSearch(
+              createAppSearchEvent(trimmed, {
+                thinking: thinkingMode,
+                postProcess: postProcessMode,
+              }),
+            );
           }
         } catch (err) {
           console.error("[SearchLauncher] Refine fetch error:", err);
-          onSearch(createAppSearchEvent(trimmed, { thinking: thinkingMode }));
+          onSearch(
+            createAppSearchEvent(trimmed, {
+              thinking: thinkingMode,
+              postProcess: postProcessMode,
+            }),
+          );
         } finally {
           setRefining(false);
         }
       } else {
-        onSearch(createAppSearchEvent(trimmed, { thinking: thinkingMode }));
+        console.log(
+          "[SearchLauncher] Non-refine submit: postProcessMode=",
+          postProcessMode,
+          "thinkingMode=",
+          thinkingMode,
+        );
+        onSearch(
+          createAppSearchEvent(trimmed, {
+            thinking: thinkingMode,
+            postProcess: postProcessMode,
+          }),
+        );
       }
     },
-    [query, disabled, refineMode, thinkingMode, refining, onSearch],
+    [
+      query,
+      disabled,
+      refineMode,
+      thinkingMode,
+      postProcessMode,
+      refining,
+      onSearch,
+    ],
   );
 
   return (
@@ -102,7 +138,7 @@ export default function SearchLauncher({
           type="button"
           onClick={() => setShowSettings(!showSettings)}
           className={`p-2 rounded-lg border transition-colors ${
-            refineMode || thinkingMode
+            refineMode || thinkingMode || postProcessMode
               ? "border-purple-600 bg-purple-950/40 text-purple-300"
               : "border-neutral-800 bg-neutral-900/50 text-neutral-500 hover:text-neutral-300 hover:border-neutral-700"
           }`}
@@ -204,6 +240,58 @@ export default function SearchLauncher({
               </p>
             )}
 
+            {/* Divider */}
+            <div className="my-3 border-t border-neutral-800" />
+
+            {/* Post-Process Mode toggle */}
+            <div className="flex items-center justify-between mb-2">
+              <div>
+                <p className="text-sm text-neutral-300 font-medium">
+                  🔍 AI Post-Process Mode
+                </p>
+                <p className="text-[11px] text-neutral-500 mt-0.5">
+                  生成 UI 后由第二个 AI 审查并修正界面质量
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={postProcessMode}
+                onClick={() => setPostProcessMode(!postProcessMode)}
+                className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                  postProcessMode ? "bg-teal-600" : "bg-neutral-700"
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                    postProcessMode ? "translate-x-4" : "translate-x-0"
+                  }`}
+                />
+              </button>
+            </div>
+
+            {postProcessMode && (
+              <div className="text-[11px] text-teal-400 mt-2 leading-relaxed space-y-1">
+                <p>🔍 开启后，AI 生成 UI 后会由第二个 AI 进行三方面审查：</p>
+                <ul className="list-disc list-inside ml-1 space-y-0.5">
+                  <li>
+                    <strong>功能审计</strong> —
+                    确保按钮/输入框等交互元素的功能与外观匹配
+                  </li>
+                  <li>
+                    <strong>布局优化</strong> — 改进排版、间距、视觉层级
+                  </li>
+                  <li>
+                    <strong>位置稳定性</strong> —
+                    保持相同元素在相同位置，避免界面跳动
+                  </li>
+                </ul>
+                <p className="mt-1 text-teal-500">
+                  ⚠️ 会增加一次额外的 AI 调用，生成速度稍慢。
+                </p>
+              </div>
+            )}
+
             <button
               type="button"
               onClick={() => setShowSettings(false)}
@@ -235,7 +323,9 @@ export default function SearchLauncher({
                   ? "bg-purple-600 hover:bg-purple-500 disabled:bg-neutral-700 disabled:text-neutral-500 text-white"
                   : thinkingMode
                     ? "bg-amber-600 hover:bg-amber-500 disabled:bg-neutral-700 disabled:text-neutral-500 text-white"
-                    : "bg-blue-600 hover:bg-blue-500 disabled:bg-neutral-700 disabled:text-neutral-500 text-white"
+                    : postProcessMode
+                      ? "bg-teal-600 hover:bg-teal-500 disabled:bg-neutral-700 disabled:text-neutral-500 text-white"
+                      : "bg-blue-600 hover:bg-blue-500 disabled:bg-neutral-700 disabled:text-neutral-500 text-white"
             }`}
           >
             {refining ? (
@@ -266,6 +356,8 @@ export default function SearchLauncher({
               "✨ Refine & Launch"
             ) : thinkingMode ? (
               "🧠 Think & Launch"
+            ) : postProcessMode ? (
+              "🔍 Review & Launch"
             ) : (
               "Launch"
             )}
