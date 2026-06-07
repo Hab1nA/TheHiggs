@@ -155,10 +155,90 @@ test("generateNextState returns imageBlueprint to caller", () => {
 test("runtime.ts forwards imageBlueprint to postProcessImageUrls", () => {
   const src = readSrc("src/ai/runtime.ts");
 
+  // When tool results exist, imageBlueprint should still be forwarded
   assert.ok(
-    src.includes(
-      "postProcessImageUrls(response, toolResults, genResult.imageBlueprint)",
-    ),
-    "runtime.ts should forward imageBlueprint to postProcessImageUrls",
+    src.includes("genResult.imageBlueprint"),
+    "runtime.ts should reference genResult.imageBlueprint for image URL post-processing",
+  );
+  // The non-fallback path should still call postProcessImageUrls with blueprint
+  assert.ok(
+    src.includes("postProcessImageUrls("),
+    "runtime.ts should call postProcessImageUrls for image placeholder replacement",
+  );
+});
+
+// ─── 5. Per-slot image search execution ────────────────────────────────────
+
+test("generateNextState executes per-slot imageSearch for uncovered slots", () => {
+  const src = readSrc("src/ai/generateNextState.ts");
+
+  assert.ok(
+    src.includes("Phase 2.5-pre"),
+    "generateNextState.ts should have Phase 2.5-pre for per-slot image searches",
+  );
+  assert.ok(
+    src.includes("uncoveredSlots"),
+    "generateNextState.ts should detect uncovered image slots",
+  );
+  assert.ok(
+    src.includes("slot_img_${slot.slotId}"),
+    "Per-slot search requests should use slot-specific IDs",
+  );
+  assert.ok(
+    src.includes("Per-slot image search for:"),
+    "Per-slot search requests should have descriptive reasons",
+  );
+});
+
+test("buildSlotBindingMap uses modular arithmetic for out-of-range indices", () => {
+  const src = readSrc("src/ai/generateNextState.ts");
+
+  assert.ok(
+    src.includes("placeholderIndex % totalDownloaded"),
+    "buildSlotBindingMap should use modular arithmetic to distribute images evenly",
+  );
+  assert.ok(
+    !src.includes("Math.max(totalDownloaded - 1, 0)") ||
+      src.indexOf("placeholderIndex % totalDownloaded") <
+        src.indexOf("Math.max(totalDownloaded - 1, 0)"),
+    "Modular arithmetic should replace the old 'last image' fallback",
+  );
+});
+
+// ─── 6. IMAGE SLOT CONTRACT strength ───────────────────────────────────────
+
+test("IMAGE SLOT CONTRACT includes critical rules for unique placeholders", () => {
+  const src = readSrc("src/ai/generateNextState.ts");
+
+  assert.ok(
+    src.includes("CRITICAL RULES"),
+    "IMAGE SLOT CONTRACT should have CRITICAL RULES section",
+  );
+  assert.ok(
+    src.includes("NEVER reuse the same placeholder"),
+    "Should explicitly forbid reusing placeholders across slots",
+  );
+  assert.ok(
+    src.includes("usedCandidateIndex"),
+    "Should instruct AI to set different usedCandidateIndex per slot",
+  );
+});
+
+// ─── 7. Domain diversity in URL selection ──────────────────────────────────
+
+test("Phase 2.5 download loop tracks used domains for diversity", () => {
+  const src = readSrc("src/ai/generateNextState.ts");
+
+  assert.ok(
+    src.includes("usedDomains"),
+    "Download loop should track used domains for diversity",
+  );
+  assert.ok(
+    src.includes("getDomain"),
+    "Should have a domain extraction helper",
+  );
+  assert.ok(
+    src.includes("优先找来自新域名的 URL"),
+    "Fallback should prefer URLs from new domains",
   );
 });

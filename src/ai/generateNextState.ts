@@ -571,6 +571,12 @@ You MUST create the exact image-bearing nodes for these slots and prefer the lis
 ${lines.join("\n")}
 If a slot binds to a nodeId, reuse that exact id in the final UI.
 Do not leave required slots empty.
+
+*** CRITICAL RULES ***
+- Each slot MUST use a DIFFERENT placeholder. NEVER reuse the same placeholder for multiple slots.
+- Set the "src" field of each image node to the EXACT placeholder string listed for that slot.
+- In memory.app.imageBindings, each entry MUST have a DIFFERENT usedCandidateIndex matching its slot order (0, 1, 2, ...).
+- If a placeholder is {{DOWNLOADED_IMAGE_3}}, use EXACTLY "{{DOWNLOADED_IMAGE_3}}" as the src — not 0, not 1, but 3.
 === END IMAGE SLOT CONTRACT ===`;
 }
 
@@ -608,10 +614,11 @@ function buildSlotBindingMap(
 
     // slot index = placeholder index（顺序一一对应）
     const placeholderIndex = i;
-    // 如果超出实际下载数量，回退到最后一个有效下载
+    // 如果超出实际下载数量，使用模运算均匀分配
+    // （避免多个 slot 共享同一张图，而是循环分配到可用图片）
     const safeIndex =
-      totalDownloaded && placeholderIndex >= totalDownloaded
-        ? Math.max(totalDownloaded - 1, 0)
+      totalDownloaded && totalDownloaded > 0
+        ? placeholderIndex % totalDownloaded
         : placeholderIndex;
 
     map.set(nodeId, {
@@ -709,6 +716,65 @@ export async function generateNextAUIRState(
     );
     toolResults = await executeRequestedTools(decision.toolRequests, request);
 
+    // Phase 2.5-pre: Execute per-slot image searches for uncovered slots.
+    // When the tool decision AI returns an imageBlueprint but only broad
+    // imageSearch queries, the slot-specific queryCandidates are never
+    // actually searched. This step fills the gap by executing per-slot searches
+    // so each slot gets cuisine/topic-specific images.
+    if (decision.imageBlueprint && decision.imageBlueprint.slots.length > 0) {
+      const existingImageSearchQueries = new Set(
+        toolResults
+          .filter((tr) => tr.toolRequest.toolName === "imageSearch")
+          .map((tr) =>
+            String(
+              (tr.toolRequest.args as Record<string, unknown>)?.query ?? "",
+            ).toLowerCase(),
+          ),
+      );
+
+      const uncoveredSlots = decision.imageBlueprint.slots.filter((slot) => {
+        return !slot.queryCandidates.some((candidate) => {
+          const lc = candidate.toLowerCase();
+          for (const existingQuery of existingImageSearchQueries) {
+            if (existingQuery.includes(lc) || lc.includes(existingQuery)) {
+              return true;
+            }
+          }
+          return false;
+        });
+      });
+
+      if (uncoveredSlots.length > 0) {
+        console.log(
+          `[generateNextState] Phase 2.5-pre: ${uncoveredSlots.length}/${decision.imageBlueprint.slots.length} image slots uncovered by existing searches, executing per-slot imageSearch...`,
+        );
+        await appendRuntimeLog({
+          type: "runtime.per_slot_search.executed",
+          pageLogId: getPageLogContext(request)?.pageLogId,
+          sessionId: request.session.sessionId,
+          turn: request.session.turn,
+          stage: "tool_execution",
+          status: "info",
+          payload: {
+            uncoveredCount: uncoveredSlots.length,
+            totalSlotCount: decision.imageBlueprint.slots.length,
+            queries: uncoveredSlots.map((s) => s.queryCandidates[0]),
+          },
+        });
+        const perSlotRequests = uncoveredSlots.map((slot) => ({
+          id: `slot_img_${slot.slotId}`,
+          toolName: "imageSearch" as const,
+          args: { query: slot.queryCandidates[0], maxResults: 5 },
+          reason: `Per-slot image search for: ${slot.purpose}`,
+        }));
+        const perSlotResults = await executeRequestedTools(
+          perSlotRequests,
+          request,
+        );
+        toolResults.push(...perSlotResults);
+      }
+    }
+
     // Phase 2.5: 基于图片蓝图优先下载候选图片，不再无限制批量下载全部搜索结果
     const imageSearchResults = toolResults.filter(
       (tr) =>
@@ -727,6 +793,16 @@ export async function generateNextAUIRState(
     );
     const slotPlan = decision.imageBlueprint?.slots ?? [];
     const imageUrlsToDownload: string[] = [];
+    /** Track which domains have already been used (for diversity) */
+    const usedDomains = new Set<string>();
+
+    const getDomain = (url: string): string => {
+      try {
+        return new URL(url).hostname;
+      } catch {
+        return "";
+      }
+    };
 
     const collectUrl = (url: string, force = false) => {
       if (!url || !url.startsWith("http")) return false;
@@ -734,6 +810,7 @@ export async function generateNextAUIRState(
       if (!force && existingDownloads.has(url)) return false;
       imageUrlsToDownload.push(url);
       existingDownloads.add(url);
+      usedDomains.add(getDomain(url));
       return true;
     };
 
@@ -787,7 +864,7 @@ export async function generateNextAUIRState(
 
       // 兜底：从所有搜索结果中找未被收集的图
       if (!collected) {
-        // 先尝试找新 URL
+        // 优先找来自新域名的 URL（避免同源图片重复）
         for (const isr of imageSearchResults) {
           if (collected) break;
           const results = (isr.result as Record<string, unknown>)?.results as
@@ -798,8 +875,29 @@ export async function generateNextAUIRState(
             if (collected) break;
             const url = String(r.imageUrl ?? "");
             if (url && !existingDownloads.has(url)) {
-              collectUrl(url);
-              collected = true;
+              // 优先选择来自新域名的图片
+              if (!usedDomains.has(getDomain(url))) {
+                collectUrl(url);
+                collected = true;
+              }
+            }
+          }
+        }
+        // 如果没有新域名的图，退而求其次接受任意新 URL
+        if (!collected) {
+          for (const isr of imageSearchResults) {
+            if (collected) break;
+            const results = (isr.result as Record<string, unknown>)?.results as
+              | Array<Record<string, unknown>>
+              | undefined;
+            if (!results) continue;
+            for (const r of results) {
+              if (collected) break;
+              const url = String(r.imageUrl ?? "");
+              if (url && !existingDownloads.has(url)) {
+                collectUrl(url);
+                collected = true;
+              }
             }
           }
         }
@@ -862,6 +960,73 @@ export async function generateNextAUIRState(
         request,
       );
       toolResults.push(...autoResults);
+
+      // ── Phase 2.5-retry: 替换失败的下载 URL ──
+      // 对于下载失败的 slot，从搜索结果中找替代 URL 重试
+      const failedIndices = new Set<number>();
+      for (let i = 0; i < autoResults.length; i++) {
+        const result = autoResults[i].result as Record<string, unknown>;
+        if (result?.error) {
+          failedIndices.add(i);
+        }
+      }
+
+      if (failedIndices.size > 0) {
+        console.log(
+          `[generateNextState] Phase 2.5-retry: ${failedIndices.size} download(s) failed, trying alternative URLs...`,
+        );
+
+        // 收集所有已知的候选图片 URL（来自搜索结果）
+        const allCandidateUrls: string[] = [];
+        for (const isr of imageSearchResults) {
+          const results = (isr.result as Record<string, unknown>)?.results as
+            | Array<Record<string, unknown>>
+            | undefined;
+          if (!results) continue;
+          for (const r of results) {
+            const url = String(r.imageUrl ?? "");
+            if (url && !existingDownloads.has(url)) {
+              allCandidateUrls.push(url);
+            }
+          }
+        }
+
+        // 对每个失败的下载，尝试替代 URL
+        const retryRequests: Array<{
+          id: string;
+          toolName: "downloadResource";
+          args: Record<string, unknown>;
+          reason: string;
+        }> = [];
+        let retryIdx = 0;
+        for (const failedIdx of failedIndices) {
+          // 找一个未被使用过的替代 URL
+          while (retryIdx < allCandidateUrls.length) {
+            const altUrl = allCandidateUrls[retryIdx++];
+            if (!existingDownloads.has(altUrl)) {
+              existingDownloads.add(altUrl);
+              retryRequests.push({
+                id: `retry_dl_${failedIdx}`,
+                toolName: "downloadResource" as const,
+                args: { url: altUrl, expectedType: "image" as const },
+                reason: `Retry download for failed slot ${failedIdx} (original: ${imageUrlsToDownload[failedIdx]?.slice(0, 60)}...)`,
+              });
+              break;
+            }
+          }
+        }
+
+        if (retryRequests.length > 0) {
+          console.log(
+            `[generateNextState] Phase 2.5-retry: attempting ${retryRequests.length} alternative download(s)`,
+          );
+          const retryResults = await executeRequestedTools(
+            retryRequests,
+            request,
+          );
+          toolResults.push(...retryResults);
+        }
+      }
     }
 
     if (decision.imageBlueprint) {
@@ -1249,6 +1414,119 @@ function createBasicFallbackResponse(
 // -----------------------------------------------------------
 // Post-Processing: 替换占位符为实际 data URL
 // -----------------------------------------------------------
+
+/**
+ * 从前一轮 UI 树中提取所有 data URL（base64 图片）。
+ * 当本轮没有工具执行结果时，这些 data URL 可作为 fallback 用于占位符替换。
+ */
+export function extractDataUrlsFromUITree(
+  ui: UINode | null | undefined,
+): string[] {
+  if (!ui) return [];
+  const dataUrls: string[] = [];
+
+  function walk(node: unknown): void {
+    if (!node || typeof node !== "object") return;
+    const obj = node as Record<string, unknown>;
+
+    // card.image 可以是 data URL 字符串或 image 对象
+    if (obj.type === "card") {
+      const img = obj.image;
+      if (typeof img === "string" && img.startsWith("data:")) {
+        dataUrls.push(img);
+      } else if (
+        img &&
+        typeof img === "object" &&
+        typeof (img as Record<string, unknown>).src === "string" &&
+        ((img as Record<string, unknown>).src as string).startsWith("data:")
+      ) {
+        dataUrls.push((img as Record<string, unknown>).src as string);
+      }
+    }
+
+    // image.src
+    if (
+      obj.type === "image" &&
+      typeof obj.src === "string" &&
+      obj.src.startsWith("data:")
+    ) {
+      dataUrls.push(obj.src);
+    }
+
+    // 任意节点的 src 字段
+    if (
+      typeof obj.src === "string" &&
+      obj.src.startsWith("data:") &&
+      obj.type !== "image" &&
+      obj.type !== "card"
+    ) {
+      dataUrls.push(obj.src);
+    }
+
+    // 递归遍历
+    if (Array.isArray(obj.children)) {
+      for (const child of obj.children) walk(child);
+    }
+    if (obj.primary) walk(obj.primary);
+    if (obj.secondary) walk(obj.secondary);
+    if (Array.isArray(obj.tabs)) {
+      for (const tab of obj.tabs as Array<Record<string, unknown>>) {
+        if (Array.isArray(tab.children)) {
+          for (const child of tab.children) walk(child);
+        }
+      }
+    }
+    if (Array.isArray(obj.footer)) {
+      for (const child of obj.footer) walk(child);
+    }
+    if (Array.isArray(obj.items)) {
+      for (const item of obj.items as Array<Record<string, unknown>>) {
+        if (Array.isArray(item.children)) {
+          for (const child of item.children) walk(child);
+        }
+      }
+    }
+  }
+
+  walk(ui);
+  return dataUrls;
+}
+
+/**
+ * 从前一轮 UI 树中提取 data URL，构造合成的 ToolExecResult[]。
+ * 当本轮没有工具执行结果时，让 postProcessImageUrls 仍能用旧 data URL 替换占位符。
+ */
+export function buildFallbackToolResults(
+  previousUI: UINode | null | undefined,
+): ToolExecResult[] {
+  const dataUrls = extractDataUrlsFromUITree(previousUI);
+  if (dataUrls.length === 0) return [];
+
+  console.log(
+    `[postProcess] Extracted ${dataUrls.length} data URL(s) from previous UI for fallback image replacement`,
+  );
+
+  // 将每个 data URL 包装为 downloadResource 的结果
+  return dataUrls.map((dataUrl, i) => ({
+    toolRequest: {
+      id: `fallback_prev_img_${i}`,
+      toolName: "downloadResource" as const,
+      args: {
+        url: `fallback://previous-ui/image-${i}`,
+        expectedType: "image" as const,
+      },
+      reason: "Fallback: data URL extracted from previous UI tree",
+    },
+    result: {
+      url: `fallback://previous-ui/image-${i}`,
+      contentType: dataUrl.match(/^data:([^;]+)/)?.[1] ?? "image/jpeg",
+      resourceType: "image",
+      data: dataUrl,
+      byteSize: Math.round((dataUrl.length * 3) / 4), // approximate base64 → bytes
+      downloadedAt: new Date().toISOString(),
+    },
+  }));
+}
 
 function buildDownloadMaps(toolResults: ToolExecResult[]): {
   urlMap: Map<string, string>;

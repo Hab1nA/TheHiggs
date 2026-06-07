@@ -9,6 +9,7 @@ import { validateResponse } from "@/auir/validate";
 import { appendRuntimeLog } from "@/runtime/logging/server";
 import type { PageLogContext } from "@/runtime/logging/types";
 import {
+  buildFallbackToolResults,
   forceRealDataMarking,
   generateNextAUIRState,
   postProcessImageUrls,
@@ -320,21 +321,51 @@ export async function runAIRuntime(
     // Replace placeholders like {{DOWNLOADED_IMAGE_N}} with actual data URLs.
     // This runs after post-processing to prevent the second AI from seeing
     // (and potentially truncating/corrupting) large base64 data URLs.
-    if (response && toolResults.length > 0) {
-      console.log(
-        "[AI Runtime] Step 4: replacing image placeholders with data URLs...",
-      );
-      postProcessImageUrls(response, toolResults, genResult.imageBlueprint);
-      forceRealDataMarking(response, toolResults);
-      await appendRuntimeLog({
-        type: "runtime.tool_results.post_processed",
-        pageLogId: pageLogContext?.pageLogId,
-        sessionId: request.session.sessionId,
-        turn: request.session.turn,
-        stage: "post_runtime",
-        status: "success",
-        payload: { toolResultCount: toolResults.length },
-      });
+    //
+    // When no tools were executed (e.g. button clicks, navigation), the AI
+    // may still emit image placeholders. In that case, we extract data URLs
+    // from the PREVIOUS UI tree and use them as fallback replacements.
+    if (response) {
+      let effectiveToolResults = toolResults;
+      let isFallback = false;
+
+      if (toolResults.length === 0) {
+        // No fresh tool results — try to salvage images from previous UI
+        const fallbackResults = buildFallbackToolResults(request.previous?.ui);
+        if (fallbackResults.length > 0) {
+          effectiveToolResults = fallbackResults;
+          isFallback = true;
+          console.log(
+            `[AI Runtime] Step 4: using ${fallbackResults.length} data URL(s) from previous UI as fallback`,
+          );
+        }
+      }
+
+      if (effectiveToolResults.length > 0) {
+        console.log(
+          "[AI Runtime] Step 4: replacing image placeholders with data URLs...",
+        );
+        postProcessImageUrls(
+          response,
+          effectiveToolResults,
+          isFallback ? undefined : genResult.imageBlueprint,
+        );
+        if (!isFallback) {
+          forceRealDataMarking(response, toolResults);
+        }
+        await appendRuntimeLog({
+          type: "runtime.tool_results.post_processed",
+          pageLogId: pageLogContext?.pageLogId,
+          sessionId: request.session.sessionId,
+          turn: request.session.turn,
+          stage: "post_runtime",
+          status: "success",
+          payload: {
+            toolResultCount: effectiveToolResults.length,
+            isFallback,
+          },
+        });
+      }
     }
 
     // ── Persist postProcess preference to session memory ──

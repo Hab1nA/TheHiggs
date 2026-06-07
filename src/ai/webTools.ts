@@ -991,8 +991,13 @@ export async function downloadResource(
     });
 
     if (!response.ok) {
-      // 对于 400/403/429 错误，尝试不带 Referer 重试
-      if ([400, 403, 429].includes(response.status)) {
+      // 重试策略：
+      //   1) 400/403/429 → 不带 Referer 重试（常见反盗链）
+      //   2) 5xx / 非标准码（如花瓣 CDN 的 567）→ 先不带 Referer 重试，再尝试最小 Headers
+      const shouldRetry =
+        [400, 403, 429].includes(response.status) || response.status >= 500;
+      if (shouldRetry) {
+        // 第一次重试：不带 Referer
         console.warn(
           `[WebTools] Download got HTTP ${response.status}, retrying without Referer...`,
         );
@@ -1016,6 +1021,33 @@ export async function downloadResource(
               retryResponse,
               expectedType,
             );
+          }
+
+          // 第二次重试（仅 5xx / 非标准码）：最小化 Headers
+          if (response.status >= 500) {
+            console.warn(
+              `[WebTools] Retry got HTTP ${retryResponse.status}, trying minimal headers...`,
+            );
+            const minimalController = new AbortController();
+            const minimalTimeout = setTimeout(
+              () => minimalController.abort(),
+              timeoutMs,
+            );
+            try {
+              const minimalResponse = await globalThis.fetch(url, {
+                signal: minimalController.signal,
+              });
+              clearTimeout(minimalTimeout);
+              if (minimalResponse.ok) {
+                return await processDownloadResponse(
+                  url,
+                  minimalResponse,
+                  expectedType,
+                );
+              }
+            } catch {
+              clearTimeout(minimalTimeout);
+            }
           }
         } catch {
           clearTimeout(retryTimeout);
