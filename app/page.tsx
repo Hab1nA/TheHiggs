@@ -4,49 +4,50 @@
 
 "use client";
 
-import React, { useState, useCallback } from "react";
-import type {
-  AUIRState,
-  AUIRMemory,
-  AUIREvent,
-  AUIRResponse,
-  LocalUIState,
-  AUIRRequest,
-} from "@/auir/types";
-import { createInitialMemory } from "@/auir/memory";
 import { defaultConstraints } from "@/auir/constraints";
+import { createInitialMemory } from "@/auir/memory";
+import type {
+  AUIREvent,
+  AUIRMemory,
+  AUIRRequest,
+  AUIRResponse,
+  AUIRState,
+  LocalUIState,
+} from "@/auir/types";
+import AUIRInspector from "@/components/AUIRInspector";
+import DebugPanel from "@/components/DebugPanel";
+import ErrorPanel from "@/components/ErrorPanel";
+import LoadingOverlay from "@/components/LoadingOverlay";
+import SearchLauncher from "@/components/SearchLauncher";
+import { sendAUIRRequest } from "@/runtime/client";
+import Renderer, { AppContextProvider } from "@/runtime/Renderer";
 import {
   createInitialLocalUIState,
   hydrateLocalStateFromAUIRState,
   setLocalValue as updateLocalValue,
 } from "@/runtime/state";
-import { sendAUIRRequest } from "@/runtime/client";
-import Renderer from "@/runtime/Renderer";
-import SearchLauncher from "@/components/SearchLauncher";
-import LoadingOverlay from "@/components/LoadingOverlay";
-import ErrorPanel from "@/components/ErrorPanel";
-import DebugPanel from "@/components/DebugPanel";
-import AUIRInspector from "@/components/AUIRInspector";
+import { useCallback, useState } from "react";
 
 let _sessionId = `sess_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
 export default function Home() {
   const [auirState, setAUIRState] = useState<AUIRState | null>(null);
   const [memory, setMemory] = useState<AUIRMemory>(() => createInitialMemory());
-  const [localState, setLocalState] = useState<LocalUIState>(() => createInitialLocalUIState());
+  const [localState, setLocalState] = useState<LocalUIState>(() =>
+    createInitialLocalUIState(),
+  );
   const [turn, setTurn] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [diagnostics, setDiagnostics] = useState<Record<string, unknown> | undefined>(undefined);
+  const [diagnostics, setDiagnostics] = useState<
+    Record<string, unknown> | undefined
+  >(undefined);
 
   const isLauncher = !auirState || auirState.app.kind === "launcher";
 
-  const handleSetLocalValue = useCallback(
-    (binding: string, value: unknown) => {
-      setLocalState((prev) => updateLocalValue(prev, binding, value));
-    },
-    []
-  );
+  const handleSetLocalValue = useCallback((binding: string, value: unknown) => {
+    setLocalState((prev) => updateLocalValue(prev, binding, value));
+  }, []);
 
   const handleAIEvent = useCallback(
     async (event: AUIREvent) => {
@@ -56,7 +57,11 @@ export default function Home() {
       const request: AUIRRequest = {
         protocol: "AUIR",
         version: "0.3",
-        session: { sessionId: _sessionId, appId: auirState?.app.id, turn: nextTurn },
+        session: {
+          sessionId: _sessionId,
+          appId: auirState?.app.id,
+          turn: nextTurn,
+        },
         previous: auirState,
         event,
         memory,
@@ -88,7 +93,7 @@ export default function Home() {
         setLoading(false);
       }
     },
-    [turn, memory, auirState]
+    [turn, memory, auirState],
   );
 
   const handleRestart = useCallback(() => {
@@ -112,9 +117,13 @@ export default function Home() {
         <div className="min-h-screen bg-neutral-950 text-neutral-100">
           <div className="border-b border-neutral-800 px-6 py-3 flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-semibold">{auirState?.app.title ?? "App"}</h2>
+              <h2 className="text-lg font-semibold">
+                {auirState?.app.title ?? "App"}
+              </h2>
               {auirState?.app.description && (
-                <p className="text-xs text-neutral-500">{auirState.app.description}</p>
+                <p className="text-xs text-neutral-500">
+                  {auirState.app.description}
+                </p>
               )}
             </div>
             <div className="flex items-center gap-3">
@@ -134,12 +143,18 @@ export default function Home() {
             </div>
           </div>
           <div className="p-6">
-            <Renderer
-              node={auirState!.ui}
-              localState={localState}
-              setLocalValue={handleSetLocalValue}
-              onAIEvent={handleAIEvent}
-            />
+            <AppContextProvider
+              appId={auirState?.app.id}
+              appTitle={auirState?.app.title}
+              appKind={auirState?.app.kind}
+            >
+              <Renderer
+                node={auirState!.ui}
+                localState={localState}
+                setLocalValue={handleSetLocalValue}
+                onAIEvent={handleAIEvent}
+              />
+            </AppContextProvider>
           </div>
         </div>
       )}

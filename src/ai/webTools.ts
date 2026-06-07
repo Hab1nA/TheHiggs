@@ -21,7 +21,7 @@
 
 export interface WebSearchParams {
   query: string;
-  /** 最大结果数（默认 5，上限 10） */
+  /** 最大结果数（默认 15，上限 30） */
   maxResults?: number;
   /** 搜索语言偏好（如 "zh-CN", "en"） */
   language?: string;
@@ -49,7 +49,7 @@ export interface WebSearchOutput {
 
 export interface ImageSearchParams {
   query: string;
-  /** 最大结果数（默认 5，上限 20） */
+  /** 最大结果数（默认 20，上限 50） */
   maxResults?: number;
   /** 图片类型过滤 */
   imageType?: "photo" | "illustration" | "all";
@@ -88,9 +88,9 @@ export interface ResourceDownloadParams {
   url: string;
   /** 期望的资源类型 */
   expectedType?: "image" | "json" | "text" | "auto";
-  /** 图片最大边长（px，默认 800） */
+  /** 图片最大边长（px，默认 1600） */
   maxImageWidth?: number;
-  /** 超时毫秒（默认 15000） */
+  /** 超时毫秒（默认 30000） */
   timeoutMs?: number;
 }
 
@@ -113,12 +113,12 @@ export interface ResourceDownloadOutput {
 // 配置
 // -----------------------------------------------------------
 
-const DEFAULT_TIMEOUT_MS = 15000;
-const DEFAULT_MAX_SEARCH_RESULTS = 5;
-const MAX_SEARCH_RESULTS = 10;
-const DEFAULT_MAX_IMAGE_RESULTS = 5;
-const MAX_IMAGE_RESULTS = 20;
-const MAX_DOWNLOAD_BYTES = 5 * 1024 * 1024; // 5 MB 上限
+const DEFAULT_TIMEOUT_MS = 30000;
+const DEFAULT_MAX_SEARCH_RESULTS = 15;
+const MAX_SEARCH_RESULTS = 30;
+const DEFAULT_MAX_IMAGE_RESULTS = 20;
+const MAX_IMAGE_RESULTS = 50;
+const MAX_DOWNLOAD_BYTES = 20 * 1024 * 1024; // 20 MB 上限
 
 /** 允许下载的 Content-Type 白名单 */
 const ALLOWED_CONTENT_TYPES = [

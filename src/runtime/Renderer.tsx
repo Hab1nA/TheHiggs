@@ -9,6 +9,37 @@ import React, { useCallback } from "react";
 import { resolveBindingValue } from "./bindings";
 
 // -----------------------------------------------------------
+// App Context — 为 TimerRefreshRender 等需要 app 信息的组件提供上下文
+// -----------------------------------------------------------
+
+type AppContextValue = {
+  appId?: string;
+  appTitle?: string;
+  appKind?: string;
+};
+
+const AppContext = React.createContext<AppContextValue>({});
+
+/** 用于在 Renderer 树中提供 app 上下文（由 page.tsx 设置） */
+export function AppContextProvider({
+  appId,
+  appTitle,
+  appKind,
+  children,
+}: AppContextValue & { children: React.ReactNode }) {
+  const value = React.useMemo(
+    () => ({ appId, appTitle, appKind }),
+    [appId, appTitle, appKind],
+  );
+  return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
+}
+
+/** 在 Renderer 树内部消费 app 上下文 */
+export function useAppContext(): AppContextValue {
+  return React.useContext(AppContext);
+}
+
+// -----------------------------------------------------------
 // Spacing System — density token → Tailwind class resolution
 // -----------------------------------------------------------
 
@@ -871,6 +902,7 @@ function TimerRefreshRender({
   n: Record<string, unknown>;
   onAIEvent: (e: AUIREvent) => void;
 }) {
+  const appCtx = useAppContext();
   const seconds = Number(n.seconds ?? 3);
   const message = n.message ? String(n.message) : "AI 正在处理...";
   const showProgress = Boolean(n.showProgress ?? true);
@@ -885,9 +917,9 @@ function TimerRefreshRender({
       import("./event").then(({ createTimerRefreshEvent }) => {
         onAIEvent(
           createTimerRefreshEvent(String(n.id), {
-            appId: undefined,
-            appTitle: undefined,
-            appKind: undefined,
+            appId: appCtx.appId,
+            appTitle: appCtx.appTitle,
+            appKind: appCtx.appKind,
           }),
         );
       });
@@ -895,7 +927,15 @@ function TimerRefreshRender({
     }
     const id = setTimeout(() => setRemaining((r) => r - 1), 1000);
     return () => clearTimeout(id);
-  }, [remaining, fired, n.id, onAIEvent]);
+  }, [
+    remaining,
+    fired,
+    n.id,
+    onAIEvent,
+    appCtx.appId,
+    appCtx.appTitle,
+    appCtx.appKind,
+  ]);
 
   const pct = Math.round(((seconds - remaining) / Math.max(seconds, 1)) * 100);
   const tone = fired ? "success" : "primary";

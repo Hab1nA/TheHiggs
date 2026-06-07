@@ -33,7 +33,8 @@ export const availableTools: AUIRToolDescriptor[] = [
         },
         maxResults: {
           type: "number",
-          description: "Maximum number of results to return (1-10, default 5).",
+          description:
+            "Maximum number of results to return (1-30, default 15).",
         },
         language: {
           type: "string",
@@ -58,11 +59,12 @@ export const availableTools: AUIRToolDescriptor[] = [
       properties: {
         query: {
           type: "string",
-          description: "Image search query. Be descriptive (e.g., 'SpaceX rocket launch' not just 'rocket').",
+          description:
+            "Image search query. Be descriptive (e.g., 'SpaceX rocket launch' not just 'rocket').",
         },
         maxResults: {
           type: "number",
-          description: "Maximum number of image results (1-20, default 5).",
+          description: "Maximum number of image results (1-50, default 20).",
         },
         imageType: {
           type: "string",
@@ -82,7 +84,7 @@ export const availableTools: AUIRToolDescriptor[] = [
       "Use this to fetch images for cards, icons, avatars, charts backgrounds, or to pull data from public APIs. " +
       "Supported types: image/png, image/jpeg, image/webp, image/gif, image/svg+xml, text/plain, application/json. " +
       "Images are returned as data URLs ready for embedding in 'image' nodes or 'card' image fields. " +
-      "Max download size: 5 MB.",
+      "Max download size: 20 MB.",
     inputSchema: {
       type: "object",
       properties: {
@@ -99,7 +101,7 @@ export const availableTools: AUIRToolDescriptor[] = [
         },
         maxImageWidth: {
           type: "number",
-          description: "Maximum image width in pixels (default 800).",
+          description: "Maximum image width in pixels (default 1600).",
         },
       },
       required: ["url"],
@@ -206,7 +208,10 @@ export async function executeTool(
             : undefined,
       };
       if (!params.query.trim()) {
-        return { result: { error: "Empty image search query" }, source: "real" };
+        return {
+          result: { error: "Empty image search query" },
+          source: "real",
+        };
       }
       const imgOutput: ImageSearchOutput = await imageSearch(params);
       return { result: imgOutput, source: "real" };

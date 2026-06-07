@@ -63,9 +63,9 @@ export const ALLOWED_COMPONENTS = [
 export const defaultConstraints: AUIRConstraints = {
   renderMode: "full_state",
   allowedComponents: [...ALLOWED_COMPONENTS],
-  maxNodes: 120,
-  maxDepth: 10,
-  maxTextLength: 6000,
+  maxNodes: 300,
+  maxDepth: 16,
+  maxTextLength: 20000,
   allowExternalData: false,
   allowCodeExecution: false,
   allowToolUse: false,
@@ -74,8 +74,8 @@ export const defaultConstraints: AUIRConstraints = {
     allowMultiColumn: true,
     allowGrid: true,
     allowSplitView: true,
-    maxGridColumns: 4,
-    maxRegions: 8,
+    maxGridColumns: 8,
+    maxRegions: 16,
   },
   interactionPolicy: {
     defaultInputMode: "local",
@@ -95,12 +95,12 @@ export const defaultConstraints: AUIRConstraints = {
 /** Run relaxed constraints for more creative UI generation */
 export const relaxedConstraints: AUIRConstraints = {
   ...defaultConstraints,
-  maxNodes: 200,
-  maxDepth: 12,
+  maxNodes: 500,
+  maxDepth: 20,
   layoutPolicy: {
     ...defaultConstraints.layoutPolicy,
-    maxGridColumns: 6,
-    maxRegions: 12,
+    maxGridColumns: 12,
+    maxRegions: 24,
   },
 };
 

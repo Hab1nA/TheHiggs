@@ -2,9 +2,15 @@
 // AI Runtime — 主入口
 // ============================================================
 
+import { beautifyLayout } from "@/auir/beautify";
+import { createFallbackResponse } from "@/auir/fallback";
 import type { AUIRRequest, AUIRResponse } from "@/auir/types";
-import { validateOrRetry } from "@/auir/validate";
-import { generateNextAUIRState } from "./generateNextState";
+import { validateResponse } from "@/auir/validate";
+import {
+  forceRealDataMarking,
+  generateNextAUIRState,
+  postProcessImageUrls,
+} from "./generateNextState";
 import { mockGenerateNextAUIRState } from "./mockRuntime";
 import { isMockMode } from "./model";
 import { postProcessUIState } from "./postProcessUI";
@@ -77,10 +83,33 @@ export async function runAIRuntime(
   // Step 2 (or direct): generate AUIR state
   console.log("[AI Runtime] Step 2: generating UI state...");
   try {
-    const response = await validateOrRetry(
-      () => generateNextAUIRState(request, refineResult, thinking),
-      request.constraints,
+    const genResult = await generateNextAUIRState(
+      request,
+      refineResult,
+      thinking,
     );
+    let response = genResult.response;
+    const toolResults = genResult.toolResults;
+
+    // Validate + beautify (replicates what validateOrRetry did)
+    const validationResult = validateResponse(response, request.constraints);
+    if (validationResult.ok) {
+      response = validationResult.value;
+      if (response.next?.ui) {
+        beautifyLayout(response.next.ui, {
+          defaultDensity: "normal",
+          defaultGap: "md",
+        });
+      }
+    } else {
+      console.warn(
+        "[AI Runtime] Validation failed, using fallback:",
+        validationResult.errors.join("; "),
+      );
+      response = createFallbackResponse(
+        `Schema validation failed: ${validationResult.errors.join("; ")}`,
+      );
+    }
 
     // Attach refine/thinking metadata to diagnostics if available
     if (response.diagnostics) {
@@ -94,11 +123,13 @@ export async function runAIRuntime(
     }
 
     // ── Step 3 (optional): Post-Process Mode ──
-    // When enabled, send the generated UI to a second AI for quality review.
-    // The reviewer checks: functional consistency, layout aesthetics,
-    // and positional stability (same elements stay at same positions).
+    // IMPORTANT: Post-process runs on the UI with PLACEHOLDERS (not data URLs).
+    // This prevents the second AI from truncating/corrupting large data URLs.
+    // Image replacement happens AFTER post-processing (Step 4).
     if (postProcess && response?.next?.ui) {
-      console.log("[AI Runtime] Step 3: post-processing UI review...");
+      console.log(
+        "[AI Runtime] Step 3: post-processing UI review (with placeholders)...",
+      );
       try {
         const postResult = await postProcessUIState({
           previousUI: request.previous?.ui ?? null,
@@ -144,6 +175,18 @@ export async function runAIRuntime(
         );
         // Graceful degradation: keep original UI
       }
+    }
+
+    // ── Step 4: Image URL replacement (AFTER post-processing) ──
+    // Replace placeholders like {{DOWNLOADED_IMAGE_N}} with actual data URLs.
+    // This runs after post-processing to prevent the second AI from seeing
+    // (and potentially truncating/corrupting) large base64 data URLs.
+    if (response && toolResults.length > 0) {
+      console.log(
+        "[AI Runtime] Step 4: replacing image placeholders with data URLs...",
+      );
+      postProcessImageUrls(response, toolResults);
+      forceRealDataMarking(response, toolResults);
     }
 
     // ── Persist postProcess preference to session memory ──

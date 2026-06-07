@@ -85,6 +85,20 @@ DECISION RULES — DEFAULT TO REAL DATA:
 - User asks for general knowledge concepts (e.g., "what is gravity") → needsTools=false
 - Ambiguous → needsTools=true, request webSearch (prefer real data over simulation)
 
+SPECIAL RULES FOR timer.refresh EVENTS:
+- timer.refresh means the UI is being auto-refreshed after an initial loading state.
+- If the app context (previousApp.title, previousApp.kind, sessionContext) indicates the app is about factual, real-time, or visual data (search results, news, weather, images, stock prices, etc.), you MUST set needsTools=true and request the appropriate tool (webSearch or imageSearch).
+- Use the previousApp and sessionContext fields to determine what data the app needs. For example:
+  - previousApp.kind = "dashboard" and sessionContext mentions search → needsTools=true, webSearch
+  - previousApp.title contains "SpaceX" or "天气" → needsTools=true, webSearch
+  - The app was originally built from a search query → needsTools=true, request the same or similar search
+- Do NOT default to needsTools=false for timer.refresh. The whole point of timer.refresh is to re-generate the UI with complete data.
+
+SPECIAL RULES FOR component.click EVENTS:
+- If the button intent suggests refreshing, reloading, or fetching new data (e.g., "Refresh", "Get Latest", "Update Data", "刷新"), set needsTools=true.
+- Use previousApp and sessionContext to determine what kind of data to fetch.
+- If the intent is about internal UI state changes (e.g., "Switch tab", "Close modal"), set needsTools=false.
+
 IMPORTANT: You may request MULTIPLE tools in a single decision. For example:
 - User asks for images of a topic → request imageSearch (no need for webSearch + downloadResource)
 - User provides multiple image URLs → request multiple downloadResource calls
@@ -93,7 +107,9 @@ Always use the EXACT URL the user provides for downloadResource. Do NOT modify o
 Output ONLY valid JSON. No markdown fences, no explanations.`;
 
   // 从事件中提取关键信息（不发送完整 request）
-  const eventSummary = {
+  // 对于非 app.search 事件（如 timer.refresh, component.click 等），
+  // 需要补充 previousApp 和 sessionContext，否则 LLM 无法判断是否需要工具。
+  const eventSummary: Record<string, unknown> = {
     type: request.event.type,
     query:
       request.event.type === "app.search" ? request.event.query : undefined,
@@ -101,6 +117,29 @@ Output ONLY valid JSON. No markdown fences, no explanations.`;
       request.event.type === "component.click"
         ? request.event.target?.intent
         : undefined,
+    // 为 timer.refresh 事件补充 appTitle/appKind/appId 上下文
+    ...(request.event.type === "timer.refresh"
+      ? {
+          appTitle: request.event.appTitle,
+          appKind: request.event.appKind,
+          appId: request.event.appId,
+        }
+      : {}),
+    // 为非 app.search 事件补充当前 app 上下文（title, kind, description）
+    ...(request.event.type !== "app.search" && request.previous?.app
+      ? {
+          previousApp: {
+            title: request.previous.app.title,
+            kind: request.previous.app.kind,
+            description: request.previous.app.description,
+          },
+        }
+      : {}),
+    // 补充 session memory 上下文（可能包含上次搜索查询）
+    ...(request.memory?.session &&
+    Object.keys(request.memory.session).length > 0
+      ? { sessionContext: request.memory.session }
+      : {}),
   };
 
   try {
@@ -115,7 +154,7 @@ Output ONLY valid JSON. No markdown fences, no explanations.`;
       }),
       mode: "json",
       temperature: 0.1,
-      maxTokens: 1000,
+      maxTokens: 4000,
     });
 
     return result.object as ToolDecision;
@@ -207,18 +246,18 @@ function sanitizeToolResult(result: unknown, downloadIndex: number): unknown {
 
   // 搜索结果: 截断过长内容
   const json = JSON.stringify(r);
-  if (json.length > 2000) {
+  if (json.length > 8000) {
     try {
       const parsed = JSON.parse(json);
       if (parsed.results && Array.isArray(parsed.results)) {
-        parsed.results = parsed.results.slice(0, 3);
+        parsed.results = parsed.results.slice(0, 10);
       }
-      if (parsed.AbstractText && parsed.AbstractText.length > 500) {
-        parsed.AbstractText = parsed.AbstractText.slice(0, 500) + "...";
+      if (parsed.AbstractText && parsed.AbstractText.length > 2000) {
+        parsed.AbstractText = parsed.AbstractText.slice(0, 2000) + "...";
       }
       return parsed;
     } catch {
-      return { _truncated: true, _preview: json.slice(0, 500) };
+      return { _truncated: true, _preview: json.slice(0, 2000) };
     }
   }
 
@@ -284,12 +323,18 @@ function buildMinimalRequestSummary(
 // 主函数：三阶段架构
 // -----------------------------------------------------------
 
+/** generateNextAUIRState 的返回值（包含工具结果供调用方做延迟图片替换） */
+export interface GenerateResult {
+  response: AUIRResponse;
+  toolResults: ToolExecResult[];
+}
+
 /** 使用 Vercel AI SDK generateObject 生成下一版 AUIR 状态 */
 export async function generateNextAUIRState(
   request: AUIRRequest,
   refineResult?: RefineOutput,
   thinking?: boolean,
-): Promise<AUIRResponse> {
+): Promise<GenerateResult> {
   const model = getModel(
     thinking === true ? "enabled" : thinking === false ? "disabled" : undefined,
   );
@@ -345,7 +390,7 @@ export async function generateNextAUIRState(
           url &&
           url.startsWith("http") &&
           !existingDownloads.has(url) &&
-          imageUrlsToDownload.length < 5
+          imageUrlsToDownload.length < 25
         ) {
           imageUrlsToDownload.push(url);
           existingDownloads.add(url);
@@ -365,7 +410,7 @@ export async function generateNextAUIRState(
         if (
           /\.(jpg|jpeg|png|webp|gif|svg)(\?|$)/i.test(url) &&
           !existingDownloads.has(url) &&
-          imageUrlsToDownload.length < 5
+          imageUrlsToDownload.length < 25
         ) {
           imageUrlsToDownload.push(url);
           existingDownloads.add(url);
@@ -429,19 +474,15 @@ export async function generateNextAUIRState(
     request.constraints,
   );
 
-  // ── Post-process: 替换占位符为实际 data URL ──
-  if (response && toolResults.length > 0) {
-    postProcessImageUrls(response, toolResults);
-    // 强制覆盖: 当有真实工具结果时，标记为真实数据
-    forceRealDataMarking(response, toolResults);
-  }
+  // NOTE: 图片占位符替换和真实数据标记已移至 runtime.ts 在后处理之后执行。
+  // 这样后处理 AI 不会接收到巨大的 data URL，避免截断/损坏图片数据。
 
   // ── Post-process: 检测并修复 loading/placeholder 页面（无论是否有工具结果）──
   if (response) {
     detectAndFixLoadingPage(response);
   }
 
-  return response;
+  return { response, toolResults };
 }
 
 // -----------------------------------------------------------
@@ -458,7 +499,7 @@ async function generateWithRetry(
   // 尝试 1: 正常生成（maxTokens: 12000）
   try {
     console.log(
-      "[generateWithRetry] Attempt 1: full generation (12000 tokens)",
+      "[generateWithRetry] Attempt 1: full generation (65536 tokens)",
     );
     const response = await validateOrRetry(
       () =>
@@ -469,7 +510,7 @@ async function generateWithRetry(
           prompt: JSON.stringify(promptObj),
           mode: "json",
           temperature: 0.4,
-          maxTokens: 12000,
+          maxTokens: 65536,
         }).then((r) => r.object),
       constraints,
     );
@@ -484,11 +525,11 @@ async function generateWithRetry(
   // 尝试 2: 截断 system prompt + 降低 temperature
   try {
     console.log(
-      "[generateWithRetry] Attempt 2: truncated system prompt (8000 tokens)",
+      "[generateWithRetry] Attempt 2: truncated system prompt (32000 tokens)",
     );
     const shortSystem =
-      systemPrompt.length > 4000
-        ? systemPrompt.slice(0, 4000) +
+      systemPrompt.length > 16000
+        ? systemPrompt.slice(0, 16000) +
           "\n\n[System prompt truncated for reliability]"
         : systemPrompt;
 
@@ -501,7 +542,7 @@ async function generateWithRetry(
           prompt: JSON.stringify(promptObj),
           mode: "json",
           temperature: 0.3,
-          maxTokens: 8000,
+          maxTokens: 32000,
         }).then((r) => r.object),
       constraints,
     );
@@ -532,7 +573,7 @@ async function generateWithRetry(
           prompt: JSON.stringify(minimalPrompt),
           mode: "json",
           temperature: 0.3,
-          maxTokens: 8000,
+          maxTokens: 32000,
         }).then((r) => r.object),
       constraints,
     );
@@ -659,7 +700,8 @@ function buildDownloadMaps(toolResults: ToolExecResult[]): {
   return { urlMap, dataUrls, failedUrls };
 }
 
-function postProcessImageUrls(
+/** 替换 UI 树中的图片占位符为实际 data URL（导出供 runtime.ts 延迟调用） */
+export function postProcessImageUrls(
   response: AUIRResponse,
   toolResults: ToolExecResult[],
 ): void {
@@ -844,7 +886,7 @@ const SIMULATED_KEYWORDS = [
  * 当有真实工具结果时，强制覆盖 AI 输出中的模拟数据标记。
  * 这是最后一道防线——即使 AI 忽略了 prompt 指令，系统也会修正。
  */
-function forceRealDataMarking(
+export function forceRealDataMarking(
   response: AUIRResponse,
   toolResults: ToolExecResult[],
 ): void {

@@ -96,7 +96,7 @@ export async function refineUserQuery(query: string): Promise<RefineOutput> {
     prompt: JSON.stringify(promptObj),
     mode: "json",
     temperature: 0.6,
-    maxTokens: 2000,
+    maxTokens: 8000,
   });
 
   return result.object;
