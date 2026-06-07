@@ -2099,6 +2099,7 @@ function CardRender({ n, localState, setLocalValue, onAIEvent }: RProps) {
             const isValid =
               src.startsWith("data:") ||
               src.startsWith("https://") ||
+              src.startsWith("http://") ||
               src.startsWith("/");
             return isValid ? (
               <img
@@ -2835,10 +2836,11 @@ function ImageRender({ n }: { n: Record<string, unknown> }) {
   const heightClass = IMG_HEIGHT_CLASS[String(n.height ?? "auto")] ?? "h-auto";
   const source = n.source as { name?: string; url?: string } | undefined;
 
-  // 安全校验：只允许 data: URLs 和 https: URLs
+  // 安全校验：允许 data: URLs、https: URLs、http: URLs 和相对路径
   const isValidSrc =
     src.startsWith("data:") ||
     src.startsWith("https://") ||
+    src.startsWith("http://") ||
     src.startsWith("/");
 
   return (

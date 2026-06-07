@@ -17,9 +17,7 @@ import { getModel } from "./model";
 
 /** 单个 UI 模块的规划结构 */
 export const uiModulePlanSchema = z.object({
-  moduleId: z
-    .string()
-    .describe("Unique module identifier, e.g. mod_1, mod_2"),
+  moduleId: z.string().describe("Unique module identifier, e.g. mod_1, mod_2"),
   purpose: z
     .string()
     .describe(
@@ -48,7 +46,9 @@ export const uiModulePlanSchema = z.object({
         .min(0)
         .max(3)
         .optional()
-        .describe("Image search queries to find VISUAL content for this module"),
+        .describe(
+          "Image search queries to find VISUAL content for this module",
+        ),
     })
     .optional()
     .describe(

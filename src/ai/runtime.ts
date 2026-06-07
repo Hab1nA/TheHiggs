@@ -178,7 +178,9 @@ export async function runAIRuntime(
       // Attach framework plan diagnostics when refine provided uiModules
       if (refineResult?.uiModules && refineResult.uiModules.length > 0) {
         const modulesWithTools = refineResult.uiModules.filter(
-          (m) => m.searchQueries && (m.searchQueries.web?.length || m.searchQueries.image?.length),
+          (m) =>
+            m.searchQueries &&
+            (m.searchQueries.web?.length || m.searchQueries.image?.length),
         ).length;
         const totalSearchQueries = refineResult.uiModules.reduce(
           (sum, m) =>

@@ -23,7 +23,11 @@ import type { PageLogContext } from "@/runtime/logging/types";
 import { generateObject } from "ai";
 import { z } from "zod";
 import { getModel } from "./model";
-import { buildRefinementSupplement, type RefineOutput, type UIModulePlan } from "./refinePrompt";
+import {
+  buildRefinementSupplement,
+  type RefineOutput,
+  type UIModulePlan,
+} from "./refinePrompt";
 import { executeTool } from "./tools";
 
 // -----------------------------------------------------------
@@ -233,9 +237,7 @@ Output ONLY valid JSON. No markdown fences, no explanations.`;
  * 从 Refine 的 uiModules 直接提取工具决策，跳过 AI 调用。
  * 确保每个模块的 web 和 image 搜索结果与该模块内容一一对应。
  */
-function deriveToolDecisionFromPlan(
-  uiModules: UIModulePlan[],
-): ToolDecision {
+function deriveToolDecisionFromPlan(uiModules: UIModulePlan[]): ToolDecision {
   const toolRequests: ToolDecision["toolRequests"] = [];
   const imageSlots: ImageBlueprint["slots"] = [];
   let slotIdx = 0;
@@ -329,7 +331,11 @@ async function executeRequestedTools(
     try {
       console.log(`[executeTools] Executing: ${tr.toolName} (${tr.id})`);
       const execResult = await executeTool(tr.toolName, tr.args);
-      results.push({ moduleId: tr.moduleId, toolRequest: tr, result: execResult.result });
+      results.push({
+        moduleId: tr.moduleId,
+        toolRequest: tr,
+        result: execResult.result,
+      });
       await appendRuntimeLog({
         type: "tool.execution",
         pageLogId: pageLogContext?.pageLogId,
@@ -1352,9 +1358,12 @@ export function postProcessImageUrls(
         );
         return dataUrls[dataUrls.length - 1];
       }
-      // 下载失败 fallback: 使用原始 URL（https:// 可直接在浏览器加载）
+      // 下载失败 fallback: 使用原始 URL（http/https 均可在浏览器直接加载图片）
       const failedUrl = failedUrls.get(idx);
-      if (failedUrl && failedUrl.startsWith("https://")) {
+      if (
+        failedUrl &&
+        (failedUrl.startsWith("https://") || failedUrl.startsWith("http://"))
+      ) {
         console.warn(
           `[postProcess] Download failed for [${idx}], using original URL as fallback`,
         );
@@ -1363,7 +1372,11 @@ export function postProcessImageUrls(
       // 任意 failed URL fallback
       if (failedUrls.size > 0) {
         const firstFailed = failedUrls.values().next().value;
-        if (firstFailed && firstFailed.startsWith("https://")) {
+        if (
+          firstFailed &&
+          (firstFailed.startsWith("https://") ||
+            firstFailed.startsWith("http://"))
+        ) {
           console.warn(
             `[postProcess] Using first failed URL as fallback for placeholder [${idx}]`,
           );

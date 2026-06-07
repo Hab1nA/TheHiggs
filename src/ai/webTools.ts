@@ -122,18 +122,77 @@ const MAX_DOWNLOAD_BYTES = 20 * 1024 * 1024; // 20 MB 上限
 
 /** 允许下载的 Content-Type 白名单 */
 const ALLOWED_CONTENT_TYPES = [
-  "image/png",
-  "image/jpeg",
-  "image/jpg", // 非标准但常见
-  "image/webp",
-  "image/avif", // 现代图片格式
-  "image/gif",
-  "image/svg+xml",
-  "image/bmp",
-  "image/tiff",
-  "text/plain",
+  "image/", // 通配：匹配所有 image/* 类型
+  "application/octet-stream", // CDN 通用 fallback（许多图床用此代替正确 MIME）
   "application/json",
+  "application/xml",
+  "text/plain",
+  "text/html",
+  "text/xml",
 ];
+
+/** 常见图片 URL 后缀（用于 Content-Type 为 octet-stream 时的回退判定） */
+const IMAGE_URL_EXTENSIONS = new Set([
+  ".jpg",
+  ".jpeg",
+  ".png",
+  ".gif",
+  ".webp",
+  ".avif",
+  ".bmp",
+  ".svg",
+  ".ico",
+  ".tiff",
+  ".tif",
+  ".heic",
+  ".heif",
+  ".jxl",
+]);
+
+/** 检查 URL 是否看起来像图片（基于路径扩展名） */
+function urlLooksLikeImage(url: string): boolean {
+  try {
+    const pathname = new URL(url).pathname.toLowerCase();
+    // 去除查询参数干扰后检查扩展名
+    const dotIdx = pathname.lastIndexOf(".");
+    if (dotIdx < 0) return false;
+    const ext = pathname.slice(dotIdx).split("?")[0];
+    return IMAGE_URL_EXTENSIONS.has(ext);
+  } catch {
+    return false;
+  }
+}
+
+/** 根据 URL 扩展名猜测图片 MIME 类型（用于 octet-stream 回退） */
+function guessImageMimeFromUrl(url: string): string {
+  const extMap: Record<string, string> = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".avif": "image/avif",
+    ".bmp": "image/bmp",
+    ".svg": "image/svg+xml",
+    ".ico": "image/x-icon",
+    ".tiff": "image/tiff",
+    ".tif": "image/tiff",
+    ".heic": "image/heic",
+    ".heif": "image/heif",
+    ".jxl": "image/jxl",
+  };
+  try {
+    const pathname = new URL(url).pathname.toLowerCase();
+    const dotIdx = pathname.lastIndexOf(".");
+    if (dotIdx >= 0) {
+      const ext = pathname.slice(dotIdx).split("?")[0];
+      if (extMap[ext]) return extMap[ext];
+    }
+  } catch {
+    // ignore
+  }
+  return "image/jpeg"; // 默认假设 JPEG
+}
 
 /** 允许的图片 MIME 类型 */
 const IMAGE_CONTENT_TYPES = new Set([
@@ -1010,9 +1069,22 @@ async function processDownloadResponse(
   if (semicolonIdx > 0) contentType = contentType.slice(0, semicolonIdx).trim();
 
   // 检查 Content-Type 白名单
-  const isAllowed = ALLOWED_CONTENT_TYPES.some((allowed) =>
-    contentType.toLowerCase().startsWith(allowed),
+  const ctLower = contentType.toLowerCase();
+  let isAllowed = ALLOWED_CONTENT_TYPES.some((allowed) =>
+    ctLower.startsWith(allowed),
   );
+
+  // 回退：当 Content-Type 为 application/octet-stream 时，检查 URL 扩展名
+  // 很多 CDN/图床返回 octet-stream 但实际是图片
+  if (!isAllowed && ctLower === "application/octet-stream") {
+    if (urlLooksLikeImage(url)) {
+      isAllowed = true;
+      console.log(
+        `[WebTools] Content-Type "${contentType}" accepted via URL extension hint for ${url}`,
+      );
+    }
+  }
+
   if (!isAllowed) {
     return createDownloadError(
       url,
@@ -1022,9 +1094,16 @@ async function processDownloadResponse(
 
   // 确定资源类型
   const isImage =
-    IMAGE_CONTENT_TYPES.has(contentType) || contentType.startsWith("image/");
+    IMAGE_CONTENT_TYPES.has(contentType) ||
+    contentType.startsWith("image/") ||
+    (ctLower === "application/octet-stream" && urlLooksLikeImage(url));
   const isJson = contentType.includes("json");
   const isText = contentType.startsWith("text/");
+
+  // 如果 octet-stream 被识别为图片，修正 contentType 以确保 data URL 正确
+  if (isImage && ctLower === "application/octet-stream") {
+    contentType = guessImageMimeFromUrl(url);
+  }
 
   const resourceType = isImage
     ? "image"
