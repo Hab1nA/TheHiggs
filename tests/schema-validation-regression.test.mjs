@@ -394,9 +394,7 @@ test("runtime.ts: post-process with invalid component reverts to original UI", (
 
   // Should validate post-process output against schema
   assert.ok(
-    content.includes(
-      "const ppValidation = validateResponse(response, request.constraints)",
-    ),
+    content.includes("const ppValidation = validateResponse("),
     "Should validate post-process output against schema",
   );
 

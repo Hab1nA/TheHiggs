@@ -16,7 +16,10 @@ import {
 } from "./generateNextState";
 import { mockGenerateNextAUIRState } from "./mockRuntime";
 import { isMockMode } from "./model";
-import { postProcessUIState } from "./postProcessUI";
+import {
+  functionalityReview,
+  polishOrConsistencyReview,
+} from "./postProcessUI";
 import { refineUserQuery, type RefineOutput } from "./refinePrompt";
 
 /** 主 AI Runtime：根据配置选择 Mock 或真实 AI 调用 */
@@ -229,37 +232,79 @@ export async function runAIRuntime(
       }
     }
 
-    // ── Step 3 (optional): Post-Process Mode ──
+    // ── Step 3 (optional): Two-Step Post-Process Mode ──
     // IMPORTANT: Post-process runs on the UI with PLACEHOLDERS (not data URLs).
     // This prevents the second AI from truncating/corrupting large data URLs.
     // Image replacement happens AFTER post-processing (Step 4).
+    //
+    // Step 1: Visual Polish (first generation) / Layout Consistency (subsequent)
+    // Step 2: Functionality Audit (always)
     if (postProcess && response?.next?.ui) {
       console.log(
-        "[AI Runtime] Step 3: post-processing UI review (with placeholders)...",
+        "[AI Runtime] Step 3: two-step post-processing (with placeholders)...",
       );
       try {
-        const postResult = await postProcessUIState(
-          {
-            previousUI: request.previous?.ui ?? null,
-            newUI: response.next.ui,
-            userQuery:
-              request.event.type === "app.search"
-                ? request.event.query
-                : "UI update",
-            appTitle: response.next.app?.title,
-            appKind: response.next.app?.kind,
-          },
-          undefined,
+        const step1Input = {
+          previousUI: request.previous?.ui ?? null,
+          newUI: response.next.ui,
+          userQuery:
+            request.event.type === "app.search"
+              ? request.event.query
+              : "UI update",
+          appTitle: response.next.app?.title,
+          appKind: response.next.app?.kind,
+        };
+
+        // ── Step 3a: Visual Polish / Layout Consistency ──
+        const step1Result = await polishOrConsistencyReview(
+          step1Input,
           pageLogContext,
         );
 
-        if (postResult.ok) {
-          // Validate corrected UI against full AUIR schema before merging.
-          // The post-process AI uses generateText (not generateObject with schema),
-          // so its output may violate the schema (unsupported components, missing
-          // required fields, etc.).
+        // Determine which UI to pass to Step 2
+        const uiForStep2 = step1Result.ok
+          ? step1Result.correctedUI
+          : response.next.ui;
+        const allChanges: string[] = step1Result.ok
+          ? [...step1Result.changes]
+          : [];
+
+        if (step1Result.ok) {
+          console.log(
+            `[AI Runtime] Step 3a complete: ${step1Result.changes.length} fix(es)`,
+          );
+        } else {
+          console.warn(
+            "[AI Runtime] Step 3a failed, continuing to Step 2 with original UI:",
+            step1Result.error,
+          );
+        }
+
+        // ── Step 3b: Functionality Audit ──
+        const step2Result = await functionalityReview(
+          { ...step1Input, newUI: uiForStep2 },
+          pageLogContext,
+        );
+
+        // Determine final UI: Step 2 result > Step 1 result > original
+        const finalUI = step2Result.ok ? step2Result.correctedUI : uiForStep2;
+
+        if (step2Result.ok) {
+          allChanges.push(...step2Result.changes);
+          console.log(
+            `[AI Runtime] Step 3b complete: ${step2Result.changes.length} fix(es)`,
+          );
+        } else {
+          console.warn(
+            "[AI Runtime] Step 3b failed, using Step 1 output:",
+            step2Result.error,
+          );
+        }
+
+        // ── Validate final UI against AUIR schema ──
+        if (allChanges.length > 0 || step1Result.ok || step2Result.ok) {
           const originalUI = response.next.ui;
-          response.next.ui = postResult.correctedUI;
+          response.next.ui = finalUI;
           const ppValidation = validateResponse(response, request.constraints);
           if (!ppValidation.ok) {
             console.warn(
@@ -287,19 +332,23 @@ export async function runAIRuntime(
             }
 
             // Add post-process diagnostics
-            if (response.diagnostics) {
-              const ppTag = `postProcess(${postResult.changes.length} fixes)`;
+            if (response.diagnostics && allChanges.length > 0) {
+              const step1Tag = step1Result.ok
+                ? `step1(${step1Result.changes.length})`
+                : "step1(skip)";
+              const step2Tag = step2Result.ok
+                ? `step2(${step2Result.changes.length})`
+                : "step2(skip)";
+              const ppTag = `postProcess(${step1Tag}+${step2Tag})`;
               response.diagnostics.modelUsed =
                 (response.diagnostics.modelUsed ?? "") + " + " + ppTag;
-              if (postResult.changes.length > 0) {
-                response.diagnostics.warnings = [
-                  ...(response.diagnostics.warnings ?? []),
-                  `Post-process: ${postResult.changes.join("; ")}`,
-                ];
-              }
+              response.diagnostics.warnings = [
+                ...(response.diagnostics.warnings ?? []),
+                `Post-process: ${allChanges.join("; ")}`,
+              ];
             }
             console.log(
-              `[AI Runtime] Post-process complete: ${postResult.changes.length} fix(es) applied`,
+              `[AI Runtime] Post-process complete: ${allChanges.length} total fix(es) applied`,
             );
             await appendRuntimeLog({
               type: "runtime.post_process.applied",
@@ -308,24 +357,9 @@ export async function runAIRuntime(
               turn: request.session.turn,
               stage: "post_process",
               status: "success",
-              payload: { changes: postResult.changes },
+              payload: { changes: allChanges },
             });
           }
-        } else {
-          console.warn(
-            "[AI Runtime] Post-process failed, using original UI:",
-            postResult.error,
-          );
-          // Graceful degradation: use original UI
-          await appendRuntimeLog({
-            type: "runtime.post_process.failed",
-            pageLogId: pageLogContext?.pageLogId,
-            sessionId: request.session.sessionId,
-            turn: request.session.turn,
-            stage: "post_process",
-            status: "failure",
-            payload: { error: postResult.error },
-          });
         }
       } catch (ppErr) {
         console.error(

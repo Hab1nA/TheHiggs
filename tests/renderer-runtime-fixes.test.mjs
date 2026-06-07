@@ -262,9 +262,7 @@ test("Issue #4: post-process output is validated against schema in runtime", () 
 
   // After post-process, there should be a validateResponse call
   assert.ok(
-    src.includes(
-      "const ppValidation = validateResponse(response, request.constraints)",
-    ),
+    src.includes("const ppValidation = validateResponse("),
     "Post-process output should be validated against schema",
   );
 
@@ -536,10 +534,7 @@ test("CP-5: page.tsx handleSetLocalValue includes component metadata in log payl
 test("CP-2: postRuntimeLog checks response status", () => {
   const src = readSrc("src/runtime/client.ts");
 
-  assert.ok(
-    src.includes("if (!res.ok)"),
-    "postRuntimeLog should check res.ok",
-  );
+  assert.ok(src.includes("if (!res.ok)"), "postRuntimeLog should check res.ok");
   assert.ok(
     src.includes("server rejected log event"),
     "postRuntimeLog should warn when server rejects log event",

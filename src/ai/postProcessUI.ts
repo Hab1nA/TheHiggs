@@ -1,25 +1,27 @@
 // ============================================================
-// AI Post-Process Mode — 生成后 UI 审查与修正
+// AI Post-Process Mode — 两步 UI 审查与修正
 // ============================================================
 // 当用户开启 Post-Process Mode 时，在 AI 生成新 UI 后，
-// 调用第二个 AI 对 UI 进行三方面审查：
-//   1. 功能审计 — 确保交互元素的功能与其外观匹配
-//   2. 布局优化 — 改进不美观的排版和空间利用
-//   3. 位置稳定性 — 保持相同元素在相同渲染位置
+// 分两步调用 AI 进行审查：
+//   Step 1: Visual Polish / Layout Consistency
+//     - 首次生成 (previousUI=null): 综合美化排版（6 维度设计审查）
+//     - 后续生成 (previousUI 存在): 布局/风格一致性调整
+//   Step 2: Functionality Audit
+//     - 交互元素语义-功能匹配检查，确保按钮可点击、输入有绑定等
 //
 // 架构：独立于主生成管线的后处理步骤
-//   generateNextAUIRState → postProcessUIState → 返回修正后 UI
+//   generateNextAUIRState → polishOrConsistencyReview → functionalityReview → 返回修正后 UI
 // ============================================================
 
 import type { UINode } from "@/auir/types";
 import { appendRuntimeLog } from "@/runtime/logging/server";
 import type { PageLogContext } from "@/runtime/logging/types";
-import type { LanguageModelV1 } from "ai";
-import { generateText } from "ai";
+import { generateObject } from "ai";
+import { z } from "zod";
 import { getModel } from "./model";
 
 // -----------------------------------------------------------
-// 类型
+// 共享类型
 // -----------------------------------------------------------
 
 export interface PostProcessInput {
@@ -47,29 +49,146 @@ export interface PostProcessOutput {
 }
 
 // -----------------------------------------------------------
-// System Prompt — UI Review Engine
+// Zod Schema — 后处理输出（UI 树 + _review 元数据）
 // -----------------------------------------------------------
 
-function buildPostProcessSystemPrompt(): string {
-  return `You are the UI Review Engine — a quality-assurance AI for an AI-UI co-execution system.
+/** 后处理输出 schema：UI 树 + _review 元数据字段 */
+const postProcessOutputSchema = z
+  .object({
+    id: z.string(),
+    type: z.string(),
+    _review: z
+      .object({
+        changes: z
+          .array(z.string())
+          .describe("List of changes made during review"),
+        issuesFound: z.number().describe("Total issues found"),
+        issuesFixed: z.number().describe("Total issues fixed"),
+      })
+      .describe("Review metadata (required by prompt instructions)"),
+  })
+  .passthrough();
 
-Your role is to review AI-generated user interfaces BEFORE they are rendered to the user.
-You receive a newly generated UI tree and (optionally) the previous UI tree from the last round.
-You produce a CORRECTED version of the new UI tree.
+// -----------------------------------------------------------
+// 共享工具函数
+// -----------------------------------------------------------
 
-The UI system uses a semantic component tree (AUIR protocol v0.3). Each node has:
-  - "id": unique identifier string
-  - "type": component type (see reference below)
-  - "visible": optional boolean (false = hidden)
-  - "semanticRole": optional role hint (navigation, input, analysis_action, local_adjustment, display, warning, confirmation, tool_result, simulation_result)
-  - "intent": optional intent description (what clicking this element does)
-  - "expectedEffect": optional description of what happens after interaction
-  - "layout": optional layout hints (width, height, align, justify, grow, order)
-  - "style": optional style tokens (tone, density, emphasis)
-  - "children": array of child nodes (for container types)
-  - Type-specific fields (see reference below)
+/**
+ * 通用 AI 调用 + JSON 解析 + _review 元数据提取。
+ * 两步共用此逻辑，避免重复代码。
+ * 使用 generateObject + mode: "json" 确保可靠 JSON 输出。
+ */
+async function runReviewAI(
+  systemPrompt: string,
+  userPrompt: string,
+  input: PostProcessInput,
+  stage: "visual_polish" | "consistency_review" | "functionality_review",
+  maxTokens: number,
+  pageLogContext?: PageLogContext,
+): Promise<PostProcessOutput> {
+  const model = getModel("disabled"); // 关闭 thinking 提高 JSON 可靠性
 
-=== COMPONENT REFERENCE (key types only) ===
+  if (!input.newUI || typeof input.newUI !== "object") {
+    return {
+      correctedUI: input.newUI,
+      changes: [],
+      ok: false,
+      error: "Invalid newUI input",
+    };
+  }
+
+  console.log(
+    `[PostProcess:${stage}] Starting review...`,
+    `prevUI=${input.previousUI ? "yes" : "no"}, newUI≈${JSON.stringify(input.newUI).length} chars`,
+  );
+
+  const startedAt = Date.now();
+  try {
+    // 使用 generateObject + mode: "json" 确保可靠 JSON 输出
+    const result = await generateObject({
+      model,
+      schema: postProcessOutputSchema,
+      system: systemPrompt,
+      prompt: userPrompt,
+      mode: "json",
+      temperature: 0.2,
+      maxTokens,
+    });
+
+    const parsed = result.object;
+    console.log(`[PostProcess:${stage}] AI response received (JSON mode)`);
+    await appendRuntimeLog({
+      type: "ai.exchange",
+      pageLogId: pageLogContext?.pageLogId,
+      sessionId: pageLogContext?.sessionId,
+      stage,
+      status: "success",
+      durationMs: Date.now() - startedAt,
+      payload: {
+        request: {
+          system: systemPrompt,
+          prompt: userPrompt,
+          options: { mode: "json", temperature: 0.2, maxTokens },
+        },
+        response: JSON.stringify(parsed).slice(0, 2000), // 截断避免日志过大
+      },
+    });
+
+    // 提取 _review 元数据
+    const parsedObj = parsed as Record<string, unknown>;
+    const reviewMeta = parsedObj._review as
+      | { changes?: string[]; issuesFound?: number; issuesFixed?: number }
+      | undefined;
+    delete parsedObj._review;
+
+    const changes = reviewMeta?.changes ?? [];
+    const issuesFound = reviewMeta?.issuesFound ?? 0;
+    const issuesFixed = reviewMeta?.issuesFixed ?? 0;
+
+    console.log(
+      `[PostProcess:${stage}] Done: ${issuesFound} found, ${issuesFixed} fixed`,
+    );
+    if (changes.length > 0) {
+      console.log(`[PostProcess:${stage}] Changes:`, changes.join("; "));
+    }
+
+    return { correctedUI: parsedObj as unknown as UINode, changes, ok: true };
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    console.error(
+      `[PostProcess:${stage}] AI call failed:`,
+      errMsg.slice(0, 200),
+    );
+    await appendRuntimeLog({
+      type: "ai.exchange",
+      pageLogId: pageLogContext?.pageLogId,
+      sessionId: pageLogContext?.sessionId,
+      stage,
+      status: "failure",
+      durationMs: Date.now() - startedAt,
+      payload: {
+        request: {
+          system: systemPrompt,
+          prompt: userPrompt,
+          options: { temperature: 0.2, maxTokens },
+        },
+        error: errMsg,
+      },
+    });
+    return {
+      correctedUI: input.newUI,
+      changes: [],
+      ok: false,
+      error: `${stage} AI call failed: ${errMsg.slice(0, 200)}`,
+    };
+  }
+}
+
+// ============================================================
+// 共享组件参考（三个 prompt 共用，避免重复）
+// ============================================================
+
+const COMPONENT_REFERENCE = `=== COMPONENT REFERENCE (key types only) ===
 
 LAYOUT NODES:
   screen { title?, layoutMode?, gap?, children[] }
@@ -124,68 +243,13 @@ EXTENDED NODES (v0.3.1):
   radar_chart { title?, axes[], series:[{name,values[],color?}], maxValue? }
   color_swatch { title?, colors:[{value,label?}], size? }
   clock { format?("time"|"date"|"datetime"|"iso"), timezone?, interval?, label?, variant?("default"|"mono"|"large") }
-  timer_refresh { seconds(number, 1-300, default 3), message?(string), showProgress?(boolean) }
+  timer_refresh { seconds(number, 1-300, default 3), message?(string), showProgress?(boolean) }`;
 
-=== REVIEW CRITERIA ===
-
-You MUST perform THREE reviews on the new UI. For each issue found, FIX it directly in the output JSON.
-
-━━━ REVIEW 1: FUNCTIONAL AUDIT ━━━
-
-Check EVERY interactive element:
-  1. Every "button" MUST have an "intent" field (describing what it does). If missing, add a plausible intent based on the label and context.
-  2. Every "button" with intent="ai_transition" mode MUST have an "interaction" object with mode and commitOn. If missing, add:
-     interaction: { mode: "ai_transition", commitOn: ["click"] }
-  3. Every "button" MUST have a "variant" field. If missing, default to "primary" for main actions, "secondary" for less important ones.
-  4. Every input node ("text_input", "number_input", "textarea", "select", "checkbox", "slider", "stepper") MUST have a "binding" field. If missing, add one based on the label (e.g., label="Name" → binding="name").
-  5. Input nodes SHOULD have "interaction" with default mode="local" unless there's a reason for ai_transition.
-  6. Interactive nodes SHOULD have "semanticRole" and "expectedEffect" where it adds clarity.
-  7. ALERT: detect buttons whose "label" or "intent" suggests they change page content, but lack interaction policy. Fix them.
-  8. ALERT: detect input fields without bindings. Add bindings.
-  9. ALERT: detect elements styled as buttons (e.g., text nodes with button-like labels) but typed as non-interactive. Convert or add note.
-
-  10. TIMER REFRESH CHECK (CRITICAL): Scan ALL text content in the UI tree (text nodes, alert messages, heading text, description_list items, card titles/subtitles, etc.) for loading/thinking indicators. The following patterns indicate a loading state:
-     - "AI 正在思考" / "AI is thinking" / "正在生成" / "Generating"
-     - "正在加载" / "Loading" / "加载中" / "Fetching"
-     - "AI 正在整理" / "AI 正在搜索" / "正在处理"
-     - "请稍候" / "Please wait"
-     - Any alert with tone="info" whose message says data is being prepared/fetched/awaited
-     If ANY of these patterns are detected, you MUST verify that a "timer_refresh" node exists somewhere in the tree (as a direct or indirect child of the root "screen" node). If NO timer_refresh node is present, you MUST ADD one as the LAST child of the screen node:
-     { "id": "auto_refresh", "type": "timer_refresh", "seconds": 3, "message": "正在刷新...", "showProgress": true }
-     This is NON-NEGOTIABLE — loading pages without auto-refresh will permanently display the loading state.
-
-━━━ REVIEW 2: LAYOUT OPTIMIZATION ━━━
-
-  1. HEADING HIERARCHY: Ensure heading levels (h1→h4) form a proper hierarchy. No h1 after h3 without h2. First heading on screen should typically be h1 or h2.
-  2. SPACING BALANCE: Check that the layout doesn't have:
-     - Overcrowded sections (too many elements without spacers/dividers)
-     - Excessive whitespace (large gaps with little content)
-     - Orphaned elements (single child in a large container without purpose)
-  3. VISUAL RHYTHM: Alternate between text-heavy and visual elements. Don't stack 5 text blocks in a row.
-  4. GRID USAGE: For 3+ cards/stats at the same level, wrap them in a "grid" with appropriate columns instead of a linear "container".
-  5. SPLIT/REGION USAGE: When content has a natural main+sidebar pattern, use "split" or "region" rather than stacked containers.
-  6. DENSITY CONSISTENCY: Elements within the same section should have consistent density tokens. Don't mix "compact" and "spacious" in the same panel.
-  7. TONE APPROPRIATENESS: Warning tones on informational content, success tones on dangerous operations, etc. are wrong. Fix tone mismatches.
-  8. CARD STRUCTURE: Cards should have at least 2 of: {title, children, footer, image}. Empty cards or cards with only one text element should be converted to simpler types.
-  9. OVER-NESTING: More than 4 levels of container nesting is usually unnecessary. Flatten where possible.
-  10. RESPONSIVE HINTS: Add "layout" hints (width/height/align) to containers when it improves the structure.
-
-━━━ REVIEW 3: POSITIONAL STABILITY ━━━
-
-When a PREVIOUS UI is provided, compare it with the NEW UI:
-  1. IDENTITY: Elements with the SAME "id" in both UIs represent the same logical component.
-  2. SAME ELEMENTS, SAME POSITIONS: If an element existed in the previous UI and still exists in the new UI, keep it at approximately the same position in the tree (same parent, similar sibling order).
-  3. DON'T MOVE STABLE ELEMENTS: A heading or a KPI card that was top-left should stay top-left unless there's a clear reason to move it.
-  4. REMOVAL IS OK IF JUSTIFIED: If the previous UI had an element that the new UI removed, that's fine — if the element is truly no longer needed.
-  5. ADDITIONS GO AT NATURAL POSITIONS: New elements should be added at logical positions (new metrics at top, new details at bottom, new actions in toolbar).
-  6. REORDERING: Only reorder children if the new order clearly improves information flow or matches a design pattern better than the previous order.
-  7. PRESERVE USER DATA: If the previous UI had input values or selections, the new UI should preserve those bindings and their values.
-
-=== OUTPUT FORMAT ===
+const OUTPUT_FORMAT_INSTRUCTIONS = `=== OUTPUT FORMAT ===
 
 You MUST output ONLY a valid JSON object representing the FULL corrected UI tree.
 The output must start with '{' and end with '}'.
-Do NOT wrap in markdown code fences (\`\`\`json).
+Do NOT wrap in markdown code fences.
 Do NOT include any explanatory text outside the JSON.
 The output must be parseable by JSON.parse().
 
@@ -199,48 +263,304 @@ Additionally, include a "_review" field at the TOP LEVEL of the output with:
     "issuesFixed": number
   }
 
-Example output structure:
+Example:
 {
   "id": "screen_main",
   "type": "screen",
   "title": "App Title",
   "children": [ ... ],
   "_review": {
-    "changes": ["Added missing intent to button 'btn_calc'", "Fixed heading hierarchy: h3→h2"],
+    "changes": ["Wrapped 3 KPI cards in grid(columns=3)", "Added gap='md' to main panel"],
     "issuesFound": 4,
     "issuesFixed": 4
   }
+}`;
+
+// ============================================================
+// Step 1a: Visual Polish Prompt（首次生成，previousUI = null）
+// ============================================================
+
+function buildVisualPolishSystemPrompt(): string {
+  return `You are the Visual Polish Engine — a UI design-review AI for an AI-UI co-execution system.
+
+Your role is to review a FIRST-TIME generated UI and improve its visual layout quality.
+This is the FIRST generation — there is no previous UI to compare against.
+Your job is purely about making the layout look clean, aligned, and professional.
+
+${COMPONENT_REFERENCE}
+
+=== YOUR MISSION: 6-DIMENSION VISUAL REVIEW ===
+
+You MUST perform ALL 6 reviews. For each issue found, FIX it directly in the output JSON.
+You MAY add STRUCTURAL nodes (container, grid, panel, region, split, spacer, divider, tabs, toolbar, card as layout wrapper) to improve layout.
+You MUST NOT add FUNCTIONAL nodes (button, text_input, number_input, textarea, select, checkbox, slider, stepper).
+You MUST NOT modify any node's "id", "type", text content, metric values, or alert messages.
+You MUST NOT modify any node's "intent", "binding", "interaction", "localAction", or "variant" fields.
+
+━━━ REVIEW 1: ALIGNMENT & GRID CONSISTENCY ━━━
+
+  1. SIBLING ALIGNMENT: Sibling nodes at the same level should use consistent layout methods.
+     If a panel has 3 cards side by side, they MUST be inside a grid(columns=3) or container(direction="row"),
+     NOT scattered as loose children of a column container.
+  2. PARALLEL DISPLAY: Elements meant to be viewed side-by-side (KPI cards, statistics, comparison items)
+     MUST use grid or container(direction="row"). They MUST NOT rely on default column stacking.
+  3. FORM ALIGNMENT: Form elements (input + label pairs) in the same area should use
+     container(direction="column") to maintain vertical alignment.
+  4. ACTION BUTTONS: Horizontal groups of action buttons should be wrapped in container(direction="row") or toolbar.
+  5. SPLIT RATIO: When using split, the primary content area should be ≥60% and sidebar ≤40%.
+     Good ratios: "2:1", "3:1". Avoid "1:1" unless content is truly balanced.
+
+━━━ REVIEW 2: SPACING & BREATHING ROOM ━━━
+
+  1. GAP COVERAGE: Every container (container, grid, panel, region) MUST have a reasonable gap value:
+     - Compact areas (toolbars, inline form rows) → gap="xs" or gap="sm"
+     - Normal content areas → gap="md"
+     - Spacious display areas (dashboards, hero sections) → gap="lg"
+  2. SECTION SEPARATION: Adjacent visual sections should have a divider or spacer between them.
+  3. CONSECUTIVE ELEMENTS: 3+ consecutive leaf nodes of the same kind (e.g., 5 text nodes in a row)
+     should be grouped into a card/panel, or have dividers inserted between logical groups.
+  4. ORPHAN CHECK: A single element alone in a large container (surrounded by empty space)
+     should either be given siblings or the container should be removed/simplified.
+
+━━━ REVIEW 3: VISUAL HIERARCHY ━━━
+
+  1. PAGE TITLE: The first content element under "screen" should be a heading(level=1 or 2)
+     serving as the page title. If missing, add one based on the app context.
+  2. HEADING LEVEL PROGRESSION: Heading levels must progress sequentially.
+     h1 → h2 → h3 is OK. h1 → h3 (skipping h2) is NOT OK — fix by inserting intermediate heading or adjusting levels.
+  3. EMPHASIS HIERARCHY: Important information should use style.emphasis="high".
+     Auxiliary/supporting information should use style.emphasis="low" or style.tone="muted".
+  4. ALERT USAGE: Warning/error content MUST use alert(tone="warning"/"danger"), not plain text nodes.
+  5. METRIC OVER TEXT: Numerical data (prices, counts, percentages) should use metric or statistic nodes,
+     not plain text nodes with numbers in them.
+
+━━━ REVIEW 4: STYLE CONSISTENCY ━━━
+
+  1. DENSITY UNIFORMITY: Elements within the same panel/region should share the same density value.
+     Do NOT mix "compact" and "spacious" density within a single section.
+  2. TONE UNIFORMITY: Same-status elements should share tones:
+     - All success states → tone="success"
+     - All warning states → tone="warning"
+     - All primary action buttons → variant="primary"
+     - All secondary actions → variant="secondary"
+  3. HEADING LEVEL UNIFORMITY: Sibling panels at the same hierarchy level should use the same heading level.
+     If Panel A uses h2, Panel B at the same level should also use h2 (not h3).
+  4. IMAGE RADIUS: Images at the same level should use consistent radius values.
+     If card images use radius="md", don't have one card with radius="none" and another with radius="lg".
+
+━━━ REVIEW 5: LAYOUT PATTERN APPROPRIATENESS ━━━
+
+  Match the layout to the content type:
+  - DASHBOARD (multiple KPIs/metrics) → Use grid as the main layout, NOT single-column stacking.
+  - TOOL (input + results) → Use split(horizontal): left panel for inputs, right panel for results.
+  - CONTENT DISPLAY (encyclopedia/articles) → Use region(header/main), with card grouping in main area.
+  - LIST/SEARCH RESULTS → Use list component, or container with card-wrapped items.
+  - FORM/SETTINGS → Use panel wrapper with container(direction="column") for field layout.
+
+━━━ REVIEW 6: STRUCTURAL CLEANLINESS ━━━
+
+  1. NESTING DEPTH: No more than 5 levels of container nesting. Flatten if deeper.
+  2. EMPTY CONTAINERS: container/grid/panel with children=[] should be REMOVED.
+  3. SINGLE-CHILD CONTAINERS: A container with only 1 child (that isn't split/region) is redundant.
+     Remove the container and use the child directly, or add meaningful siblings.
+  4. TABS INTEGRITY: Each tab in a tabs node should have at least 1 meaningful child.
+  5. REGION SEMANTICS: region nodes should use semantically correct values:
+     "header", "sidebar", "main", "footer", "toolbar", "results", "logs", "inspector".
+
+=== CONSERVATION RULES ===
+
+1. PRESERVE CONTENT: Do NOT change text strings, metric values, alert messages, or data.
+2. PRESERVE INTERACTIVITY: Do NOT modify intent, binding, interaction, localAction, or variant fields.
+3. PRESERVE IDS: Do NOT change any node's "id" or "type".
+4. FIX > REWRITE: Prefer targeted fixes over wholesale layout replacement.
+5. MAX 15 CHANGES: Limit to at most 15 substantive changes.
+6. COMPLETE OUTPUT: Output the FULL corrected UI tree, not a diff.
+
+${OUTPUT_FORMAT_INSTRUCTIONS}`;
 }
 
-=== IMPORTANT RULES ===
+// ============================================================
+// Step 1b: Layout Consistency Prompt（后续生成，previousUI 存在）
+// ============================================================
 
-1. Be CONSERVATIVE: Only make changes that clearly improve the UI. Don't rewrite the entire layout unless it's fundamentally broken.
-2. PRESERVE FUNCTIONALITY: Don't remove interactive elements. Don't change button intents unless they're clearly wrong.
-3. PRESERVE DATA: Don't change metric values, chart data, or text content unless they're clearly incorrect.
-4. FIX > REPLACE: Prefer fixing individual issues over replacing entire sections.
-5. COMPLETE OUTPUT: Output the FULL corrected UI tree, not just the changed parts.
-6. VALID JSON: Ensure all strings are properly escaped. No trailing commas. Double-quoted property names.
-7. MAX 15 CHANGES: To avoid over-engineering, limit fixes to at most 15 substantive changes per review.`;
+function buildConsistencySystemPrompt(): string {
+  return `You are the Layout Consistency Engine — a UI review AI for an AI-UI co-execution system.
+
+Your role is to ensure a NEWLY generated UI maintains visual consistency with the PREVIOUS UI.
+You receive both the previous UI tree and the new UI tree.
+You produce a CORRECTED version of the new UI that preserves the layout patterns, visual style,
+and component positioning of the previous UI — while still carrying the new content.
+
+${COMPONENT_REFERENCE}
+
+=== YOUR MISSION: LAYOUT CONSISTENCY REVIEW ===
+
+You MUST perform ALL 4 consistency checks. For each issue found, FIX it directly in the output JSON.
+You MAY add STRUCTURAL nodes (container, grid, panel, region, split, spacer, divider, tabs, toolbar, card as layout wrapper).
+You MUST NOT add FUNCTIONAL nodes (button, text_input, number_input, textarea, select, checkbox, slider, stepper).
+You MUST NOT modify any node's "id", "type", text content, metric values, or alert messages.
+You MUST NOT modify any node's "intent", "binding", "interaction", "localAction", or "variant" fields.
+
+━━━ CHECK 1: ID-BASED POSITION STABILITY ━━━
+
+  1. IDENTITY MATCH: Elements with the SAME "id" in both UIs represent the same logical component.
+  2. SAME PARENT, SAME ORDER: If an element existed in the previous UI and still exists in the new UI,
+     keep it at approximately the same position in the tree (same parent container, similar sibling order).
+  3. DON'T MOVE STABLE ELEMENTS: A heading or KPI card that was top-left should stay top-left
+     unless there's a clear reason to move it.
+  4. REMOVAL IS OK IF JUSTIFIED: If the previous UI had an element that the new UI removed,
+     that's fine — only if the element is truly no longer needed.
+  5. ADDITIONS GO AT NATURAL POSITIONS: New elements should be added at logical positions
+     (new metrics at top, new details at bottom, new actions in toolbar).
+  6. REORDERING: Only reorder children if the new order clearly improves information flow
+     or matches a design pattern better than the previous order.
+
+━━━ CHECK 2: LAYOUT MODE INHERITANCE ━━━
+
+  1. LAYOUT PATTERN PERSISTENCE: If the previous UI used split(horizontal) for main content + sidebar,
+     the new UI should also use split for the same structural purpose — not switch to stacked containers.
+  2. GRID PERSISTENCE: If the previous UI used grid(columns=4) for KPI cards,
+     the new UI should use the same grid structure for its KPI cards.
+  3. REGION PERSISTENCE: If the previous UI used region("header"/"main"/"sidebar"),
+     the new UI should maintain the same region structure.
+  4. TAB PERSISTENCE: If the previous UI had tabs with specific tab IDs,
+     the new UI should preserve those tab IDs and their ordering.
+
+━━━ CHECK 3: VISUAL STYLE INHERITANCE ━━━
+
+  1. TONE MATCHING: Elements with the same semanticRole should inherit the previous UI's
+     style.tone values. E.g., if "display" elements were tone="muted" before, keep them muted.
+  2. DENSITY MATCHING: The overall density setting should match the previous UI.
+     If the previous UI used density="normal", don't switch to "compact" without reason.
+  3. GAP CONSISTENCY: Gap sizes should match the previous UI for equivalent containers.
+  4. HEADING LEVEL MATCHING: Heading levels for the same structural sections should be preserved.
+     If the page title was h1 before, keep it h1.
+  5. IMAGE STYLE MATCHING: Image radius, fit, and size hints should match the previous UI
+     for equivalent image slots.
+
+━━━ CHECK 4: USER DATA PRESERVATION ━━━
+
+  1. INPUT VALUES: If the previous UI had input nodes with specific values or bindings,
+     the new UI should preserve those bindings and their values.
+  2. SELECTION STATE: If the previous UI had a select/checkbox with a specific value,
+     the new UI should preserve that selection state.
+  3. ACTIVE TAB: If the previous UI had a specific activeTab, the new UI should preserve it.
+
+=== CONSERVATION RULES ===
+
+1. PRESERVE CONTENT: Do NOT change text strings, metric values, alert messages, or data.
+2. PRESERVE INTERACTIVITY: Do NOT modify intent, binding, interaction, localAction, or variant fields.
+3. PRESERVE IDS: Do NOT change any node's "id" or "type".
+4. FIX > REWRITE: Prefer targeted fixes over wholesale layout replacement.
+5. MAX 10 CHANGES: Limit to at most 10 consistency fixes.
+6. COMPLETE OUTPUT: Output the FULL corrected UI tree, not a diff.
+
+${OUTPUT_FORMAT_INSTRUCTIONS}`;
+}
+
+// ============================================================
+// Step 2: Functionality Audit Prompt（始终执行）
+// ============================================================
+
+function buildFunctionalitySystemPrompt(): string {
+  return `You are the Functionality Audit Engine — a UI review AI for an AI-UI co-execution system.
+
+Your role is to review a UI tree and ensure every interactive element has correct,
+complete functional properties. You do NOT adjust layout — only fix functional attributes.
+
+${COMPONENT_REFERENCE}
+
+=== YOUR MISSION: FUNCTIONALITY AUDIT ===
+
+You MUST perform ALL 4 checks. For each issue found, FIX it directly in the output JSON.
+You MUST NOT rearrange layout, move nodes, add structural containers, or change spacing.
+You MAY add the following nodes ONLY when required by the timer_refresh check:
+  - timer_refresh node
+You MUST NOT add any other new nodes.
+You MUST NOT change layout properties (gap, direction, columns, ratio, layout, style.density, style.emphasis).
+
+━━━ CHECK 1: BUTTON COMPLETENESS ━━━
+
+  For EVERY button node in the tree:
+  1. "intent" field MUST exist. If missing, add a plausible intent based on label and context.
+  2. "variant" field MUST exist. If missing:
+     - Main/primary actions (Submit, Calculate, Generate, Search, Apply, Run) → variant="primary"
+     - Less important actions (Cancel, Back, Close, Reset) → variant="secondary"
+     - Tertiary actions (Learn More, Info, Help) → variant="ghost"
+  3. "interaction" field MUST exist for buttons that trigger AI actions:
+     - If label/intent suggests AI transition (Search, Generate, Calculate, Analyze, Compare, Apply, Submit, Next, Run):
+       interaction: { mode: "ai_transition", commitOn: ["click"], includeLocalStateOnCommit: true }
+     - If label/intent suggests local action (Toggle, Switch, Close, Expand):
+       interaction: { mode: "local" }
+  4. "semanticRole" SHOULD exist. Infer from context:
+     - Submit/Apply/Run → semanticRole="analysis_action"
+     - Cancel/Close/Back → semanticRole="navigation"
+     - Toggle/Adjust → semanticRole="local_adjustment"
+  5. "expectedEffect" SHOULD exist. Write a brief description of what happens when clicked.
+
+━━━ CHECK 2: INPUT NODE COMPLETENESS ━━━
+
+  For EVERY input node (text_input, number_input, textarea, select, checkbox, slider, stepper):
+  1. "binding" field MUST exist. If missing, derive from label:
+     - label="Name" → binding="name"
+     label="Email Address" → binding="emailAddress"
+     label="搜索关键词" → binding="searchKeyword"
+     If no label, use the node's id as binding.
+  2. "interaction" field SHOULD exist. Default to:
+     interaction: { mode: "local" }
+     UNLESS the input clearly triggers AI processing on change.
+  3. "semanticRole" SHOULD be "input" for all input nodes.
+  4. "expectedEffect" SHOULD describe what the input controls.
+
+━━━ CHECK 3: TIMER REFRESH DETECTION (CRITICAL) ━━━
+
+  Scan ALL text content in the UI tree for loading/thinking indicators:
+  - "AI 正在思考" / "AI is thinking" / "正在生成" / "Generating"
+  - "正在加载" / "Loading" / "加载中" / "Fetching"
+  - "AI 正在整理" / "AI 正在搜索" / "正在处理"
+  - "请稍候" / "Please wait"
+  - Any alert with tone="info" whose message says data is being prepared/fetched/awaited
+
+  Check text in: text nodes, alert messages, heading text, description_list items,
+  card titles/subtitles, badge text, tag text, list item text.
+
+  If ANY of these patterns are detected:
+  - Verify a "timer_refresh" node exists as a direct or indirect child of the root "screen" node.
+  - If NO timer_refresh node is present, ADD one as the LAST child of the screen node:
+    { "id": "auto_refresh", "type": "timer_refresh", "seconds": 3, "message": "正在刷新...", "showProgress": true }
+
+  This is NON-NEGOTIABLE — loading pages without auto-refresh will permanently display the loading state.
+
+━━━ CHECK 4: SEMANTIC-TYPE MATCHING ━━━
+
+  Scan for mismatches between a node's apparent purpose and its type:
+  1. Text nodes with button-like labels ("点击这里", "Click here", "查看详情", "Learn more")
+     that are NOT buttons → Consider if they should be converted to button nodes.
+     Only convert if the text clearly implies a clickable action.
+  2. Buttons that display static information (no action intent) → Consider if they should be text or metric.
+  3. Alert nodes used for non-alert purposes (purely informational without warning/success tone)
+     → Adjust tone to "info" if not already set.
+
+=== CONSERVATION RULES ===
+
+1. PRESERVE LAYOUT: Do NOT rearrange nodes, change containers, add/remove structural nodes, or modify spacing.
+2. PRESERVE CONTENT: Do NOT change text strings, metric values, or alert messages.
+3. PRESERVE IDS: Do NOT change any node's "id" or "type".
+4. FIX > REPLACE: Prefer fixing individual properties over replacing entire nodes.
+5. MAX 10 CHANGES: Limit to at most 10 functional fixes.
+6. COMPLETE OUTPUT: Output the FULL corrected UI tree, not a diff.
+
+${OUTPUT_FORMAT_INSTRUCTIONS}`;
 }
 
 // -----------------------------------------------------------
-// 构建用户提示词（发送给审查 AI 的输入）
+// 构建用户提示词
 // -----------------------------------------------------------
 
-function buildPostProcessPrompt(input: PostProcessInput): string {
-  const previousStr = input.previousUI
-    ? JSON.stringify(input.previousUI, null, 1)
-    : "null (this is the first generation — no previous UI to compare)";
-
-  // 截断过大的 previous UI（保留结构但限制长度）
-  const previousTruncated =
-    previousStr.length > 8000
-      ? previousStr.slice(0, 8000) +
-        "\n... [previous UI truncated, length=" +
-        previousStr.length +
-        "]"
-      : previousStr;
-
+function buildReviewPrompt(
+  input: PostProcessInput,
+  mode: "visual_polish" | "consistency_review" | "functionality_review",
+): string {
   const newStr = JSON.stringify(input.newUI, null, 1);
   const newTruncated =
     newStr.length > 12000
@@ -250,8 +570,40 @@ function buildPostProcessPrompt(input: PostProcessInput): string {
         "]"
       : newStr;
 
-  return `=== REVIEW TASK ===
-Review the following AI-generated UI and produce a corrected version.
+  // Visual Polish 和 Functionality 不需要 previousUI
+  if (mode === "visual_polish" || mode === "functionality_review") {
+    return `=== REVIEW TASK (${mode.toUpperCase()}) ===
+
+CONTEXT:
+  User Query: "${input.userQuery}"
+  App Title: ${input.appTitle ?? "N/A"}
+  App Kind: ${input.appKind ?? "N/A"}
+
+=== UI TO REVIEW ===
+${newTruncated}
+
+=== INSTRUCTIONS ===
+1. Perform the review described in the system prompt.
+2. Fix ALL issues you find directly in the output JSON.
+3. Include the "_review" metadata field.
+4. Output ONLY the JSON object — no markdown, no explanations outside JSON.
+5. The output must start with "{" and end with "}".
+6. Be conservative — don't rewrite the entire UI, just fix the issues.`;
+  }
+
+  // Consistency review 需要 previousUI
+  const previousStr = input.previousUI
+    ? JSON.stringify(input.previousUI, null, 1)
+    : "null (no previous UI)";
+  const previousTruncated =
+    previousStr.length > 8000
+      ? previousStr.slice(0, 8000) +
+        "\n... [previous UI truncated, length=" +
+        previousStr.length +
+        "]"
+      : previousStr;
+
+  return `=== REVIEW TASK (CONSISTENCY REVIEW) ===
 
 CONTEXT:
   User Query: "${input.userQuery}"
@@ -265,187 +617,74 @@ ${previousTruncated}
 ${newTruncated}
 
 === INSTRUCTIONS ===
-1. Perform the THREE reviews described in the system prompt.
-2. Fix ALL issues you find directly in the output JSON.
-3. Include the "_review" metadata field.
-4. Output ONLY the JSON object — no markdown, no explanations outside JSON.
-5. The output must start with "{" and end with "}".
-6. Be conservative — don't rewrite the entire UI, just fix the issues.`;
+1. Perform the consistency checks described in the system prompt.
+2. Compare the NEW UI against the PREVIOUS UI for layout/style consistency.
+3. Fix ALL issues you find directly in the output JSON.
+4. Include the "_review" metadata field.
+5. Output ONLY the JSON object — no markdown, no explanations outside JSON.
+6. The output must start with "{" and end with "}".
+7. Be conservative — don't rewrite the entire UI, just fix consistency issues.`;
 }
 
-// -----------------------------------------------------------
-// 验证输出是否是可用的 UI 节点
-// -----------------------------------------------------------
+// ============================================================
+// Step 1: Visual Polish / Layout Consistency
+// ============================================================
 
-function isValidUINode(node: unknown): node is Record<string, unknown> {
-  if (!node || typeof node !== "object") return false;
-  const obj = node as Record<string, unknown>;
-  return typeof obj.id === "string" && typeof obj.type === "string";
-}
-
-/** 清洗 AI 输出 — 移除 markdown fences、提取 JSON */
-function extractJSON(text: string): string {
-  // 移除可能的 markdown 代码块
-  let cleaned = text.trim();
-
-  // 移除 ```json ... ``` 包裹
-  const fenceMatch = cleaned.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
-  if (fenceMatch) {
-    cleaned = fenceMatch[1].trim();
-  }
-
-  // 尝试找到第一个 { 和最后一个 }
-  const firstBrace = cleaned.indexOf("{");
-  const lastBrace = cleaned.lastIndexOf("}");
-  if (firstBrace !== -1 && lastBrace > firstBrace) {
-    cleaned = cleaned.slice(firstBrace, lastBrace + 1);
-  }
-
-  return cleaned;
-}
-
-// -----------------------------------------------------------
-// 主函数：AI 后处理 UI 审查
-// -----------------------------------------------------------
-
-export async function postProcessUIState(
+/**
+ * Step 1: 根据 previousUI 是否为 null 选择不同的审查策略。
+ * - previousUI = null → Visual Polish（首次生成，6 维度美化）
+ * - previousUI 存在 → Layout Consistency（后续生成，布局一致性）
+ */
+export async function polishOrConsistencyReview(
   input: PostProcessInput,
-  modelOverride?: LanguageModelV1,
   pageLogContext?: PageLogContext,
 ): Promise<PostProcessOutput> {
-  const model = modelOverride ?? getModel("disabled"); // 关闭 thinking 提高 JSON 可靠性
+  const isFirstGeneration = input.previousUI === null;
 
-  // 基础验证：输入必须有 newUI
-  if (!input.newUI || typeof input.newUI !== "object") {
-    return {
-      correctedUI: input.newUI,
-      changes: [],
-      ok: false,
-      error: "Invalid newUI input",
-    };
+  if (isFirstGeneration) {
+    console.log("[PostProcess:Step1] Mode: Visual Polish (first generation)");
+    return runReviewAI(
+      buildVisualPolishSystemPrompt(),
+      buildReviewPrompt(input, "visual_polish"),
+      input,
+      "visual_polish",
+      16000, // 首次生成内容量大，需要更多空间
+      pageLogContext,
+    );
   }
-
-  const systemPrompt = buildPostProcessSystemPrompt();
-  const userPrompt = buildPostProcessPrompt(input);
 
   console.log(
-    "[PostProcess] Starting UI review...",
-    `prevUI=${input.previousUI ? "yes" : "no"}, newUI nodes≈${JSON.stringify(input.newUI).length} chars`,
+    "[PostProcess:Step1] Mode: Layout Consistency (subsequent generation)",
   );
+  return runReviewAI(
+    buildConsistencySystemPrompt(),
+    buildReviewPrompt(input, "consistency_review"),
+    input,
+    "consistency_review",
+    12000,
+    pageLogContext,
+  );
+}
 
-  const startedAt = Date.now();
-  try {
-    const result = await generateText({
-      model,
-      system: systemPrompt,
-      prompt: userPrompt,
-      temperature: 0.2, // 低温度确保稳定输出
-      maxTokens: 12000,
-    });
+// ============================================================
+// Step 2: Functionality Audit
+// ============================================================
 
-    const rawText = result.text;
-    console.log(`[PostProcess] AI response received: ${rawText.length} chars`);
-    await appendRuntimeLog({
-      type: "ai.exchange",
-      pageLogId: pageLogContext?.pageLogId,
-      sessionId: pageLogContext?.sessionId,
-      stage: "post_process",
-      status: "success",
-      durationMs: Date.now() - startedAt,
-      payload: {
-        request: {
-          system: systemPrompt,
-          prompt: userPrompt,
-          options: { temperature: 0.2, maxTokens: 12000 },
-        },
-        response: rawText,
-      },
-    });
-
-    // 清洗并解析 JSON
-    const cleaned = extractJSON(rawText);
-    let parsed: unknown;
-
-    try {
-      parsed = JSON.parse(cleaned);
-    } catch (parseErr) {
-      console.error(
-        "[PostProcess] JSON parse failed:",
-        (parseErr as Error).message?.slice(0, 100),
-      );
-      console.error(
-        "[PostProcess] Raw output (first 500 chars):",
-        rawText.slice(0, 500),
-      );
-      return {
-        correctedUI: input.newUI,
-        changes: [],
-        ok: false,
-        error: `JSON parse failed: ${(parseErr as Error).message?.slice(0, 100)}`,
-      };
-    }
-
-    // 验证基本结构
-    if (!isValidUINode(parsed)) {
-      console.error(
-        "[PostProcess] Output is not a valid UI node: missing id or type",
-      );
-      return {
-        correctedUI: input.newUI,
-        changes: [],
-        ok: false,
-        error: "Output missing required id/type fields",
-      };
-    }
-
-    // 提取审查元数据
-    const reviewMeta = (parsed as Record<string, unknown>)._review as
-      | { changes?: string[]; issuesFound?: number; issuesFixed?: number }
-      | undefined;
-
-    // 移除 _review 字段（不是标准 UINode 属性）
-    delete (parsed as Record<string, unknown>)._review;
-
-    const changes = reviewMeta?.changes ?? [];
-    const issuesFound = reviewMeta?.issuesFound ?? 0;
-    const issuesFixed = reviewMeta?.issuesFixed ?? 0;
-
-    console.log(
-      `[PostProcess] Review complete: ${issuesFound} issues found, ${issuesFixed} fixed`,
-    );
-    if (changes.length > 0) {
-      console.log("[PostProcess] Changes:", changes.join("; "));
-    }
-
-    return {
-      correctedUI: parsed as UINode,
-      changes,
-      ok: true,
-    };
-  } catch (err) {
-    const errMsg = err instanceof Error ? err.message : String(err);
-    console.error("[PostProcess] AI call failed:", errMsg.slice(0, 200));
-    await appendRuntimeLog({
-      type: "ai.exchange",
-      pageLogId: pageLogContext?.pageLogId,
-      sessionId: pageLogContext?.sessionId,
-      stage: "post_process",
-      status: "failure",
-      durationMs: Date.now() - startedAt,
-      payload: {
-        request: {
-          system: systemPrompt,
-          prompt: userPrompt,
-          options: { temperature: 0.2, maxTokens: 12000 },
-        },
-        error: errMsg,
-      },
-    });
-    return {
-      correctedUI: input.newUI,
-      changes: [],
-      ok: false,
-      error: `Post-process AI call failed: ${errMsg.slice(0, 200)}`,
-    };
-  }
+/**
+ * Step 2: 交互元素语义-功能匹配检查。
+ * 仅审查交互属性（intent/binding/interaction/variant），不调整布局。
+ */
+export async function functionalityReview(
+  input: PostProcessInput,
+  pageLogContext?: PageLogContext,
+): Promise<PostProcessOutput> {
+  console.log("[PostProcess:Step2] Mode: Functionality Audit");
+  return runReviewAI(
+    buildFunctionalitySystemPrompt(),
+    buildReviewPrompt(input, "functionality_review"),
+    input,
+    "functionality_review",
+    10000,
+    pageLogContext,
+  );
 }

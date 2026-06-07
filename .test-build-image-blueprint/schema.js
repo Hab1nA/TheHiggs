@@ -272,6 +272,11 @@ const localActionSchema = zod_1.z.discriminatedUnion("type", [
         type: zod_1.z.literal("toggle"),
         binding: zod_1.z.string(),
     }),
+    zod_1.z.object({
+        type: zod_1.z.literal("append_text"),
+        targetBinding: zod_1.z.string(),
+        text: zod_1.z.string(),
+    }),
 ]);
 const buttonNodeSchema = zod_1.z.object({
     ...baseNodeExtras,

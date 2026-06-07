@@ -26,10 +26,20 @@ const compressRequestSchema = z.object({
   currentSize: z.number(),
 });
 
-const compressedMemorySchema = z.object({
-  session: z.record(z.string(), z.unknown()),
-  app: z.record(z.string(), z.unknown()),
-});
+const compressedMemorySchema = z
+  .object({
+    session: z.record(z.string(), z.unknown()),
+    app: z.record(z.string(), z.unknown()),
+  })
+  .refine(
+    (data) =>
+      Object.keys(data.session).length > 0 ||
+      Object.keys(data.app).length > 0,
+    {
+      message:
+        "Compressed memory must not be empty — at least session or app must have entries",
+    },
+  );
 
 const COMPRESS_SYSTEM_PROMPT = `You are a memory compression engine for an AI-UI runtime.
 
@@ -133,7 +143,7 @@ export async function POST(req: Request) {
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("[compress-memory] Failed:", message);
     // Non-critical: return ok=false, frontend keeps original memory
-    return NextResponse.json({ ok: false, error: message });
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }
 

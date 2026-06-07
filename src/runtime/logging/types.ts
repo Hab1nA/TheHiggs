@@ -7,6 +7,9 @@ export type RuntimeLogStage =
   | "tool_execution"
   | "ui_generation"
   | "post_process"
+  | "visual_polish"
+  | "consistency_review"
+  | "functionality_review"
   | "validation"
   | "post_runtime";
 
