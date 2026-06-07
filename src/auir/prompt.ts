@@ -94,6 +94,10 @@ You MUST actively design diverse, visually rich, and well-structured UIs. Follow
    - Feedback: alert, badge, progress, empty_state
    - Content: heading, text, list, quote, code_block, timeline, image
    - INTERACTIVE MINIMUM: Every screen MUST include at least 3 interactive controls (button, input, select, slider, toggle, checkbox, stepper, external_link).
+   - VIRTUAL KEYBOARD BUTTONS: Use "append_text" localAction on buttons to create virtual keyboard / formula input buttons. Each button is an independent node that appends a specific text to a target text_input or textarea when clicked — NO AI round-trip is triggered.
+     Example: { "id": "btn_sin", "type": "button", "label": "sin(", "intent": "append_sin_function", "interaction": { "mode": "local" }, "localAction": { "type": "append_text", "targetBinding": "formula", "text": "sin(" } }
+     Use cases: calculator keyboards, formula editors, code snippet inserters, quick-reply buttons, text template buttons.
+     Constraint: targetBinding MUST reference an existing text_input or textarea binding on the same screen.
 
 10. RESPECT APP CONTEXT: Design layouts appropriate to the app kind:
     - "dashboard" → Use grids with kpi_cards, stat_groups, charts, and region-based layout

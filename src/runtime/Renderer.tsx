@@ -1152,6 +1152,8 @@ function ButtonRender({ n, localState, setLocalValue, onAIEvent }: RProps) {
         min?: number;
         max?: number;
         value?: unknown;
+        targetBinding?: string;
+        text?: string;
       }
     | undefined;
 
@@ -1174,7 +1176,14 @@ function ButtonRender({ n, localState, setLocalValue, onAIEvent }: RProps) {
       else if (localAction.type === "set_value") next = localAction.value;
       else if (localAction.type === "toggle")
         next = !resolveBindingValue(localState, binding, false);
-      else next = current;
+      else if (localAction.type === "append_text") {
+        const targetBinding = localAction.targetBinding ?? binding;
+        const currentText = String(
+          resolveBindingValue(localState, targetBinding, ""),
+        );
+        setLocalValue(targetBinding, currentText + (localAction.text ?? ""));
+        return;
+      } else next = current;
       setLocalValue(binding, next);
     } else if (isAI) {
       import("./event").then(

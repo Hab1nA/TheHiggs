@@ -134,6 +134,11 @@ export type LocalAction =
   | {
       type: "toggle";
       binding: string;
+    }
+  | {
+      type: "append_text";
+      targetBinding: string;
+      text: string;
     };
 
 // -----------------------------------------------------------

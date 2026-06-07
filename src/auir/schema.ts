@@ -307,6 +307,11 @@ const localActionSchema = z.discriminatedUnion("type", [
     type: z.literal("toggle"),
     binding: z.string(),
   }),
+  z.object({
+    type: z.literal("append_text"),
+    targetBinding: z.string(),
+    text: z.string(),
+  }),
 ]);
 
 const buttonNodeSchema = z.object({
