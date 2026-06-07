@@ -302,7 +302,7 @@ export async function runAIRuntime(
       console.log(
         "[AI Runtime] Step 4: replacing image placeholders with data URLs...",
       );
-      postProcessImageUrls(response, toolResults);
+      postProcessImageUrls(response, toolResults, genResult.imageBlueprint);
       forceRealDataMarking(response, toolResults);
       await appendRuntimeLog({
         type: "runtime.tool_results.post_processed",

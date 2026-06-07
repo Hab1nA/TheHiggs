@@ -232,6 +232,13 @@ Embed downloaded images using the "image" node type:
   { "id": "hero_img", "type": "image", "src": "{{DOWNLOADED_IMAGE_0}}", "alt": "Description", "fit": "cover", "radius": "md" }
 Use "card" node's "image" field for card header images.
 
+If an IMAGE SLOT CONTRACT is provided, you MUST:
+1. Generate the exact image-bearing nodes listed in the contract (by nodeId or sectionHint).
+2. Use the provided placeholder for each slot (one placeholder per slot, in slot order).
+3. Emit imageBindings in application memory as [ { slotId, nodeId, usedCandidateIndex: 0 } ].
+4. Do not leave required image slots empty.
+5. Do NOT invent new {{DOWNLOADED_IMAGE_N}} placeholders — only use the ones from the contract.
+
 --- OUTPUT FORMAT ---
 30. Output ONLY a raw JSON object. Do NOT wrap in markdown code fences. The response must start with '{' and end with '}'.
 31. Ensure all strings are properly escaped. No trailing commas. All property names must be double-quoted.

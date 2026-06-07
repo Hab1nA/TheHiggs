@@ -124,9 +124,13 @@ const MAX_DOWNLOAD_BYTES = 20 * 1024 * 1024; // 20 MB 上限
 const ALLOWED_CONTENT_TYPES = [
   "image/png",
   "image/jpeg",
+  "image/jpg", // 非标准但常见
   "image/webp",
+  "image/avif", // 现代图片格式
   "image/gif",
   "image/svg+xml",
+  "image/bmp",
+  "image/tiff",
   "text/plain",
   "application/json",
 ];
@@ -135,9 +139,13 @@ const ALLOWED_CONTENT_TYPES = [
 const IMAGE_CONTENT_TYPES = new Set([
   "image/png",
   "image/jpeg",
+  "image/jpg",
   "image/webp",
+  "image/avif",
   "image/gif",
   "image/svg+xml",
+  "image/bmp",
+  "image/tiff",
 ]);
 
 // -----------------------------------------------------------

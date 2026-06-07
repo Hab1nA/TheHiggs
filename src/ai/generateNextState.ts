@@ -11,7 +11,11 @@
 // 新架构将工具决策分离为独立调用，从根本上解决此问题。
 
 import { buildAUIRSystemPrompt } from "@/auir/prompt";
-import { auirResponseSchema } from "@/auir/schema";
+import {
+  auirResponseSchema,
+  imageBlueprintSchema,
+  type ImageBlueprint,
+} from "@/auir/schema";
 import type { AUIRRequest, AUIRResponse, UINode } from "@/auir/types";
 import { validateOrRetry } from "@/auir/validate";
 import { appendRuntimeLog } from "@/runtime/logging/server";
@@ -35,6 +39,7 @@ interface ToolDecision {
     args: Record<string, unknown>;
     reason: string;
   }>;
+  imageBlueprint?: ImageBlueprint;
 }
 
 const toolDecisionSchema = z
@@ -61,6 +66,11 @@ const toolDecisionSchema = z
       )
       .optional()
       .describe("Tools to execute (only if needsTools is true)"),
+    imageBlueprint: imageBlueprintSchema
+      .optional()
+      .describe(
+        "Planned image slots for the next UI. Provide when visual content is needed.",
+      ),
   })
   .passthrough()
   .transform((val) => val as ToolDecision);
@@ -70,7 +80,7 @@ async function decideToolNeeds(request: AUIRRequest): Promise<ToolDecision> {
   const model = getModel("disabled"); // 禁用 thinking 以提高 JSON 可靠性
   const pageLogContext = getPageLogContext(request);
 
-  const systemPrompt = `You are a tool decision engine. Given a user request, decide if external tools (web search or resource download) are needed BEFORE generating a UI.
+  const systemPrompt = `You are a tool decision engine. Given a user request, decide if external tools are needed BEFORE generating a UI.
 
 AVAILABLE TOOLS:
 - webSearch: Search for real-time info. USE when user asks for current/latest/real/live data, news, facts, or any factual information.
@@ -87,6 +97,12 @@ DECISION RULES — DEFAULT TO REAL DATA:
 - User asks for demo/example/mock/simulated data EXPLICITLY → needsTools=false
 - User asks for general knowledge concepts (e.g., "what is gravity") → needsTools=false
 - Ambiguous → needsTools=true, request webSearch (prefer real data over simulation)
+
+IMAGE SEARCH STRATEGY (CRITICAL):
+- If visual content is needed, do NOT search broadly using only the user prompt.
+- Instead, plan the next UI's image slots FIRST, then search per slot.
+- Prefer slot-specific queries like hero cover, card thumbnail, section illustration, character portrait, map preview, product photo, etc.
+- For each image slot, request up to 3 precise queries and avoid duplicates across slots.
 
 SPECIAL RULES FOR timer.refresh EVENTS:
 - timer.refresh means the UI is being auto-refreshed after an initial loading state.
@@ -106,6 +122,7 @@ IMPORTANT: You may request MULTIPLE tools in a single decision. For example:
 - User asks for images of a topic → request imageSearch (no need for webSearch + downloadResource)
 - User provides multiple image URLs → request multiple downloadResource calls
 Always use the EXACT URL the user provides for downloadResource. Do NOT modify or reconstruct URLs.
+When requesting imageSearch, you should usually also return an imageBlueprint with 1-12 image slots.
 
 Output ONLY valid JSON. No markdown fences, no explanations.`;
 
@@ -355,12 +372,93 @@ ${sections.join("\n\n")}
 CRITICAL INSTRUCTIONS:
 1. For {{DOWNLOADED_IMAGE_N}} placeholders: use them as the "src" field in "image" nodes. The system automatically replaces them with actual data URLs.
 2. For image nodes, set src to exactly the placeholder string (e.g., "{{DOWNLOADED_IMAGE_0}}").
-3. *** MANDATORY: Set diagnostics.simulatedData = false. The data above is REAL, not simulated. ***
-4. *** MANDATORY: Set confidence = "real" on ALL metric/statistic/kpi_card nodes. ***
-5. *** FORBIDDEN: Do NOT add alert nodes with titles like "Simulated Data", "模拟数据", "Demo Data", or any disclaimer about data being fake. ***
-6. *** FORBIDDEN: Do NOT add text saying "基于模拟数据", "values are simulated", "demo purposes", or similar disclaimers. ***
-7. DO NOT output a loading alert or placeholder UI — output the FINAL UI with all tool data integrated.
+3. If IMAGE SLOT CONTRACT placeholders exist, prefer them according to slot order and binding hints.
+4. *** MANDATORY: Set diagnostics.simulatedData = false. The data above is REAL, not simulated. ***
+5. *** MANDATORY: Set confidence = "real" on ALL metric/statistic/kpi_card nodes. ***
+6. *** FORBIDDEN: Do NOT add alert nodes with titles like "Simulated Data", "模拟数据", "Demo Data", or any disclaimer about data being fake. ***
+7. *** FORBIDDEN: Do NOT add text saying "基于模拟数据", "values are simulated", "demo purposes", or similar disclaimers. ***
+8. DO NOT output a loading alert or placeholder UI — output the FINAL UI with all tool data integrated.
 === END TOOL RESULTS ===`;
+}
+
+function buildImageSlotContractSupplement(
+  toolResults: ToolExecResult[],
+  blueprint: ImageBlueprint,
+): string {
+  const downloadUrls: string[] = [];
+  for (const tr of toolResults) {
+    if (tr.toolRequest.toolName !== "downloadResource") continue;
+    const result = tr.result as Record<string, unknown>;
+    if (!result || result.error) continue;
+    const url = String(result.url ?? "");
+    if (url) downloadUrls.push(url);
+  }
+
+  // 每个 slot 对应 1 个 placeholder index（顺序一一对应）
+  const lines = blueprint.slots.map((slot, index) => {
+    const placeholder = `{{DOWNLOADED_IMAGE_${index}}}`;
+    const slotLine = `slotId=${slot.slotId}; purpose=${slot.purpose}; preferredAspect=${slot.preferredAspect ?? "auto"}; bind=${slot.bindTarget.type}:${slot.bindTarget.nodeId ?? slot.bindTarget.sectionHint ?? ""}; queries=[${slot.queryCandidates.join(" | ")}]`;
+    return `${index + 1}. ${slotLine} -> candidate: ${placeholder}`;
+  });
+
+  return `
+
+=== IMAGE SLOT CONTRACT ===
+The following image slots were planned BEFORE UI generation.
+You MUST create the exact image-bearing nodes for these slots and prefer the listed placeholder candidates in order.
+${lines.join("\n")}
+If a slot binds to a nodeId, reuse that exact id in the final UI.
+Do not leave required slots empty.
+=== END IMAGE SLOT CONTRACT ===`;
+}
+
+function buildSlotBindingMap(
+  response: AUIRResponse,
+  blueprint?: ImageBlueprint,
+  totalDownloaded?: number,
+): Map<
+  string,
+  {
+    slotId: string;
+    candidatePlaceholder: string;
+  }
+> {
+  const map = new Map<
+    string,
+    { slotId: string; candidatePlaceholder: string }
+  >();
+  if (!blueprint || blueprint.slots.length === 0) return map;
+
+  const bindings = (
+    response.next.memory?.app as Record<string, unknown> | undefined
+  )?.imageBindings as
+    | Array<{ slotId: string; nodeId?: string; usedCandidateIndex?: number }>
+    | undefined;
+
+  // 每个 slot 占用 1 个 placeholder index（按 slot 在 blueprint 中的顺序）
+  for (let i = 0; i < blueprint.slots.length; i++) {
+    const slot = blueprint.slots[i];
+    const bindingFromAI = bindings?.find(
+      (b: { slotId: string }) => b.slotId === slot.slotId,
+    );
+    const nodeId = bindingFromAI?.nodeId ?? slot.bindTarget.nodeId;
+    if (!nodeId) continue;
+
+    // slot index = placeholder index（顺序一一对应）
+    const placeholderIndex = i;
+    // 如果超出实际下载数量，回退到最后一个有效下载
+    const safeIndex =
+      totalDownloaded && placeholderIndex >= totalDownloaded
+        ? Math.max(totalDownloaded - 1, 0)
+        : placeholderIndex;
+
+    map.set(nodeId, {
+      slotId: slot.slotId,
+      candidatePlaceholder: `{{DOWNLOADED_IMAGE_${safeIndex}}}`,
+    });
+  }
+
+  return map;
 }
 
 /** 从 AUIRRequest 中提取精简上下文（避免发送完整 previous state） */
@@ -390,6 +488,7 @@ function buildMinimalRequestSummary(
 export interface GenerateResult {
   response: AUIRResponse;
   toolResults: ToolExecResult[];
+  imageBlueprint?: ImageBlueprint;
 }
 
 /** 使用 Vercel AI SDK generateObject 生成下一版 AUIR 状态 */
@@ -420,14 +519,12 @@ export async function generateNextAUIRState(
     );
     toolResults = await executeRequestedTools(decision.toolRequests, request);
 
-    // Phase 2.5: 自动从搜索结果中提取图片 URL 并下载
-    // 处理 imageSearch 结果：直接提取 imageUrl
+    // Phase 2.5: 基于图片蓝图优先下载候选图片，不再无限制批量下载全部搜索结果
     const imageSearchResults = toolResults.filter(
       (tr) =>
         tr.toolRequest.toolName === "imageSearch" &&
         !(tr.result as Record<string, unknown>)?.error,
     );
-    // 处理 webSearch 结果：从 URL 中筛选图片链接
     const webSearchResults = toolResults.filter(
       (tr) =>
         tr.toolRequest.toolName === "webSearch" &&
@@ -438,63 +535,160 @@ export async function generateNextAUIRState(
         .filter((tr) => tr.toolRequest.toolName === "downloadResource")
         .map((tr) => String((tr.result as Record<string, unknown>)?.url ?? "")),
     );
+    const slotPlan = decision.imageBlueprint?.slots ?? [];
     const imageUrlsToDownload: string[] = [];
 
-    // 从 imageSearch 结果提取直链（优先，质量最高）
-    for (const isr of imageSearchResults) {
-      const result = isr.result as Record<string, unknown>;
-      const results = result.results as
-        | Array<Record<string, unknown>>
-        | undefined;
-      if (!results) continue;
-      for (const r of results) {
-        const url = String(r.imageUrl ?? "");
-        if (
-          url &&
-          url.startsWith("http") &&
-          !existingDownloads.has(url) &&
-          imageUrlsToDownload.length < 25
-        ) {
-          imageUrlsToDownload.push(url);
-          existingDownloads.add(url);
+    const collectUrl = (url: string, force = false) => {
+      if (!url || !url.startsWith("http")) return false;
+      if (imageUrlsToDownload.length >= 18) return false;
+      if (!force && existingDownloads.has(url)) return false;
+      imageUrlsToDownload.push(url);
+      existingDownloads.add(url);
+      return true;
+    };
+
+    // 1) 优先按 slot 规划收集候选 URL，每个 slot 确保下载 1 张
+    for (const slot of slotPlan) {
+      const normalizedPurpose = (slot.purpose || "").toLowerCase();
+      const normalizedHints = [
+        ...slot.queryCandidates.map((q) => q.toLowerCase()),
+        normalizedPurpose,
+        (slot.bindTarget.sectionHint || "").toLowerCase(),
+      ].filter(Boolean);
+
+      // 找到与该 slot 对应的 imageSearch 结果（通过 query 匹配）
+      const slotSearchResult = imageSearchResults.find((isr) => {
+        const isrQuery = String(
+          (isr.toolRequest.args as Record<string, unknown>)?.query ?? "",
+        ).toLowerCase();
+        return slot.queryCandidates.some(
+          (q) =>
+            isrQuery.includes(q.toLowerCase()) ||
+            q.toLowerCase().includes(isrQuery),
+        );
+      });
+
+      const matchesSlot = (text: string, url: string) => {
+        const t = (text + " " + url).toLowerCase();
+        return normalizedHints.some((h) => h && t.includes(h.slice(0, 8)));
+      };
+
+      let collected = false;
+
+      // 优先精准匹配：先从对应的搜索结果中找
+      if (slotSearchResult) {
+        const results = (slotSearchResult.result as Record<string, unknown>)
+          ?.results as Array<Record<string, unknown>> | undefined;
+        if (results) {
+          for (const r of results) {
+            if (collected) break;
+            const url = String(r.imageUrl ?? "");
+            const title = String(r.title ?? "");
+            if (url && !existingDownloads.has(url)) {
+              // 优先精准匹配，否则只要是新 URL 就取
+              if (matchesSlot(title, url) || !collected) {
+                collectUrl(url);
+                collected = true;
+              }
+            }
+          }
+        }
+      }
+
+      // 兜底：从所有搜索结果中找未被收集的图
+      if (!collected) {
+        // 先尝试找新 URL
+        for (const isr of imageSearchResults) {
+          if (collected) break;
+          const results = (isr.result as Record<string, unknown>)?.results as
+            | Array<Record<string, unknown>>
+            | undefined;
+          if (!results) continue;
+          for (const r of results) {
+            if (collected) break;
+            const url = String(r.imageUrl ?? "");
+            if (url && !existingDownloads.has(url)) {
+              collectUrl(url);
+              collected = true;
+            }
+          }
+        }
+        // 仍然没有找到，强制下载第一个可用 URL（允许重复）
+        if (!collected) {
+          for (const isr of imageSearchResults) {
+            if (collected) break;
+            const results = (isr.result as Record<string, unknown>)?.results as
+              | Array<Record<string, unknown>>
+              | undefined;
+            if (!results || results.length === 0) continue;
+            const url = String(results[0].imageUrl ?? "");
+            if (url) {
+              collectUrl(url, true);
+              collected = true;
+            }
+          }
         }
       }
     }
 
-    // 从 webSearch 结果提取图片 URL（补充）
-    for (const sr of webSearchResults) {
-      const result = sr.result as Record<string, unknown>;
-      const results = result.results as
-        | Array<Record<string, unknown>>
-        | undefined;
-      if (!results) continue;
-      for (const r of results) {
-        const url = String(r.url ?? "");
-        if (
-          /\.(jpg|jpeg|png|webp|gif|svg)(\?|$)/i.test(url) &&
-          !existingDownloads.has(url) &&
-          imageUrlsToDownload.length < 25
-        ) {
-          imageUrlsToDownload.push(url);
-          existingDownloads.add(url);
+    // 2) 兜底：没有蓝图时保留旧行为（最多 12 张）
+    if (slotPlan.length === 0) {
+      for (const isr of imageSearchResults) {
+        const results = (isr.result as Record<string, unknown>)?.results as
+          | Array<Record<string, unknown>>
+          | undefined;
+        if (!results) continue;
+        for (const r of results) {
+          const url = String(r.imageUrl ?? "");
+          if (imageUrlsToDownload.length >= 12) break;
+          collectUrl(url);
+        }
+      }
+      for (const sr of webSearchResults) {
+        const results = (sr.result as Record<string, unknown>)?.results as
+          | Array<Record<string, unknown>>
+          | undefined;
+        if (!results) continue;
+        for (const r of results) {
+          const url = String(r.url ?? "");
+          if (imageUrlsToDownload.length >= 12) break;
+          if (/\.(jpg|jpeg|png|webp|gif|svg)(\?|$)/i.test(url)) collectUrl(url);
         }
       }
     }
+
     if (imageUrlsToDownload.length > 0) {
       console.log(
-        `[generateNextState] Phase 2.5: auto-downloading ${imageUrlsToDownload.length} image(s) from search results`,
+        `[generateNextState] Phase 2.5: downloading ${imageUrlsToDownload.length} slot-aware image(s)`,
       );
       const autoDownloadRequests = imageUrlsToDownload.map((url, i) => ({
         id: `auto_dl_${i}`,
         toolName: "downloadResource" as const,
         args: { url, expectedType: "image" as const },
-        reason: "Auto-download image found in webSearch results",
+        reason: "Auto-download image for image slot planning",
       }));
       const autoResults = await executeRequestedTools(
         autoDownloadRequests,
         request,
       );
       toolResults.push(...autoResults);
+    }
+
+    if (decision.imageBlueprint) {
+      const blueprintLogContext = getPageLogContext(request);
+      await appendRuntimeLog({
+        type: "runtime.image_blueprint.resolved",
+        pageLogId: blueprintLogContext?.pageLogId,
+        sessionId: request.session.sessionId,
+        turn: request.session.turn,
+        stage: "tool_execution",
+        status: "success",
+        payload: {
+          slotCount: decision.imageBlueprint.slots.length,
+          downloadedCount: imageUrlsToDownload.length,
+          blueprint: decision.imageBlueprint,
+        },
+      });
     }
   } else {
     console.log("[generateNextState] Phase 2: no tools needed, skipping.");
@@ -511,6 +705,12 @@ export async function generateNextAUIRState(
   // 工具结果注入 system prompt（而非 user prompt）
   if (toolResults.length > 0) {
     systemPrompt += buildToolResultsSupplement(toolResults);
+  }
+  if (decision.imageBlueprint && decision.imageBlueprint.slots.length > 0) {
+    systemPrompt += buildImageSlotContractSupplement(
+      toolResults,
+      decision.imageBlueprint,
+    );
   }
 
   // Build minimal prompt（不发送完整 previous state）
@@ -564,7 +764,7 @@ export async function generateNextAUIRState(
     }
   }
 
-  return { response, toolResults };
+  return { response, toolResults, imageBlueprint: decision.imageBlueprint };
 }
 
 // -----------------------------------------------------------
@@ -903,12 +1103,47 @@ function buildDownloadMaps(toolResults: ToolExecResult[]): {
 export function postProcessImageUrls(
   response: AUIRResponse,
   toolResults: ToolExecResult[],
+  imageBlueprint?: ImageBlueprint,
 ): void {
   const { urlMap, dataUrls, failedUrls } = buildDownloadMaps(toolResults);
-  if (urlMap.size === 0 && dataUrls.length === 0 && failedUrls.size === 0)
-    return;
+  const hasDownloads =
+    urlMap.size > 0 || dataUrls.length > 0 || failedUrls.size > 0;
 
   let replaceCount = 0;
+
+  const slotBindingMap = hasDownloads
+    ? buildSlotBindingMap(response, imageBlueprint, dataUrls.length)
+    : new Map<string, { slotId: string; candidatePlaceholder: string }>();
+
+  function applySlotBinding(node: Record<string, unknown>): boolean {
+    const nodeId = String(node.id ?? "");
+    if (!nodeId) return false;
+    const binding = slotBindingMap.get(nodeId);
+    if (!binding) return false;
+
+    const value = resolveValue(binding.candidatePlaceholder);
+    if (!value) return false;
+
+    if (node.type === "image" && typeof node.src === "string") {
+      node.src = value;
+      replaceCount++;
+      return true;
+    }
+
+    if (node.type === "card" && typeof node.image === "string") {
+      node.image = value;
+      replaceCount++;
+      return true;
+    }
+
+    if (typeof node.src === "string") {
+      node.src = value;
+      replaceCount++;
+      return true;
+    }
+
+    return false;
+  }
 
   function resolveValue(val: string): string | null {
     // 1. 索引占位符 {{DOWNLOADED_IMAGE_0}}, {{DOWNLOADED_IMAGE_1}}, etc.
@@ -965,13 +1200,30 @@ export function postProcessImageUrls(
     return null;
   }
 
+  // 清理无法解析的占位符（防止 AI 自行发明的 {{DOWNLOADED_IMAGE_N}} 残留）
+  function cleanUnresolvedPlaceholder(val: string): string {
+    const placeholderMatch = val.match(/\{\{DOWNLOADED_IMAGE_(\d+)\}\}/);
+    if (!placeholderMatch) return val;
+    const idx = parseInt(placeholderMatch[1], 10);
+    if (idx < dataUrls.length) return val; // 有效占位符，保留
+    // 无效占位符：清理为空字符串
+    console.warn(
+      `[postProcess] Cleaning unresolved placeholder: ${val} (index ${idx} out of range, have ${dataUrls.length})`,
+    );
+    return "";
+  }
+
   function walkAndReplace(node: unknown): void {
     if (!node || typeof node !== "object") return;
     const obj = node as Record<string, unknown>;
 
+    // 蓝图绑定优先：让图片落到规划好的节点位置
+    applySlotBinding(obj);
+
     // image.src
     if (obj.type === "image" && typeof obj.src === "string") {
-      const r = resolveValue(obj.src);
+      obj.src = cleanUnresolvedPlaceholder(obj.src);
+      const r = resolveValue(obj.src as string);
       if (r) {
         obj.src = r;
         replaceCount++;
@@ -979,7 +1231,8 @@ export function postProcessImageUrls(
     }
     // card.image
     if (obj.type === "card" && typeof obj.image === "string") {
-      const r = resolveValue(obj.image);
+      obj.image = cleanUnresolvedPlaceholder(obj.image);
+      const r = resolveValue(obj.image as string);
       if (r) {
         obj.image = r;
         replaceCount++;
@@ -991,7 +1244,8 @@ export function postProcessImageUrls(
       obj.type !== "image" &&
       obj.type !== "card"
     ) {
-      const r = resolveValue(obj.src);
+      obj.src = cleanUnresolvedPlaceholder(obj.src);
+      const r = resolveValue(obj.src as string);
       if (r) {
         obj.src = r;
         replaceCount++;
