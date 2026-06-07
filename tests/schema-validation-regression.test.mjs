@@ -499,9 +499,12 @@ test("generateNextState.ts: tool execution only uses Phase 1 decision, not respo
   const content = readFileSync(genPath, "utf-8");
 
   // Phase 1 tool decision should be the source of tool execution
+  // Either via AI call (decideToolNeeds) or plan-derived (deriveToolDecisionFromPlan)
+  const usesDecideToolNeeds = content.includes("decideToolNeeds(request)");
+  const usesPlanDerived = content.includes("deriveToolDecisionFromPlan(");
   assert.ok(
-    content.includes("const decision = await decideToolNeeds(request)"),
-    "Should use Phase 1 decideToolNeeds for tool decisions",
+    usesDecideToolNeeds || usesPlanDerived,
+    "Should use Phase 1 decideToolNeeds or deriveToolDecisionFromPlan for tool decisions",
   );
 
   // The response-level toolRequests field should not be iterated for execution

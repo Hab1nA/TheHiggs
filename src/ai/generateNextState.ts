@@ -23,7 +23,7 @@ import type { PageLogContext } from "@/runtime/logging/types";
 import { generateObject } from "ai";
 import { z } from "zod";
 import { getModel } from "./model";
-import { buildRefinementSupplement, type RefineOutput } from "./refinePrompt";
+import { buildRefinementSupplement, type RefineOutput, type UIModulePlan } from "./refinePrompt";
 import { executeTool } from "./tools";
 
 // -----------------------------------------------------------
@@ -38,6 +38,7 @@ interface ToolDecision {
     toolName: string;
     args: Record<string, unknown>;
     reason: string;
+    moduleId?: string;
   }>;
   imageBlueprint?: ImageBlueprint;
 }
@@ -225,15 +226,87 @@ Output ONLY valid JSON. No markdown fences, no explanations.`;
 }
 
 // -----------------------------------------------------------
+// Plan-derived tool decision (when Refine provides uiModules)
+// -----------------------------------------------------------
+
+/**
+ * 从 Refine 的 uiModules 直接提取工具决策，跳过 AI 调用。
+ * 确保每个模块的 web 和 image 搜索结果与该模块内容一一对应。
+ */
+function deriveToolDecisionFromPlan(
+  uiModules: UIModulePlan[],
+): ToolDecision {
+  const toolRequests: ToolDecision["toolRequests"] = [];
+  const imageSlots: ImageBlueprint["slots"] = [];
+  let slotIdx = 0;
+
+  for (const mod of uiModules) {
+    if (!mod.searchQueries) continue;
+
+    // Web search queries → text content for this module
+    if (mod.searchQueries.web) {
+      for (const query of mod.searchQueries.web) {
+        toolRequests!.push({
+          id: `plan_${mod.moduleId}_web_${toolRequests!.length}`,
+          toolName: "webSearch",
+          args: { query, maxResults: 10 },
+          reason: mod.purpose,
+          moduleId: mod.moduleId,
+        });
+      }
+    }
+
+    // Image search queries → visual content for this module
+    if (mod.searchQueries.image) {
+      for (const query of mod.searchQueries.image) {
+        toolRequests!.push({
+          id: `plan_${mod.moduleId}_img_${toolRequests!.length}`,
+          toolName: "imageSearch",
+          args: { query, maxResults: 5 },
+          reason: mod.purpose,
+          moduleId: mod.moduleId,
+        });
+
+        // Auto-derive imageBlueprint slot for each image query
+        slotIdx++;
+        imageSlots.push({
+          slotId: `s${slotIdx}`,
+          purpose: mod.purpose,
+          queryCandidates: [query],
+          preferredAspect: "auto",
+          required: true,
+          bindTarget: {
+            type: "image",
+            sectionHint: mod.moduleId,
+          },
+        });
+      }
+    }
+  }
+
+  const hasTools = toolRequests.length > 0;
+  return {
+    needsTools: hasTools,
+    toolRequests: hasTools ? toolRequests : undefined,
+    imageBlueprint:
+      imageSlots.length > 0
+        ? { summary: "Auto-derived from UI framework plan", slots: imageSlots }
+        : undefined,
+  };
+}
+
+// -----------------------------------------------------------
 // Phase 2: 工具执行
 // -----------------------------------------------------------
 
 interface ToolExecResult {
+  moduleId?: string;
   toolRequest: {
     id: string;
     toolName: string;
     args: Record<string, unknown>;
     reason: string;
+    moduleId?: string;
   };
   result: unknown;
 }
@@ -244,6 +317,7 @@ async function executeRequestedTools(
     toolName: string;
     args: Record<string, unknown>;
     reason: string;
+    moduleId?: string;
   }>,
   request: AUIRRequest,
 ): Promise<ToolExecResult[]> {
@@ -255,7 +329,7 @@ async function executeRequestedTools(
     try {
       console.log(`[executeTools] Executing: ${tr.toolName} (${tr.id})`);
       const execResult = await executeTool(tr.toolName, tr.args);
-      results.push({ toolRequest: tr, result: execResult.result });
+      results.push({ moduleId: tr.moduleId, toolRequest: tr, result: execResult.result });
       await appendRuntimeLog({
         type: "tool.execution",
         pageLogId: pageLogContext?.pageLogId,
@@ -283,6 +357,7 @@ async function executeRequestedTools(
         payload: { toolRequest: tr, error: errMsg },
       });
       results.push({
+        moduleId: tr.moduleId,
         toolRequest: tr,
         result: { error: `Tool execution failed: ${errMsg}` },
       });
@@ -379,6 +454,87 @@ CRITICAL INSTRUCTIONS:
 7. *** FORBIDDEN: Do NOT add text saying "基于模拟数据", "values are simulated", "demo purposes", or similar disclaimers. ***
 8. DO NOT output a loading alert or placeholder UI — output the FINAL UI with all tool data integrated.
 === END TOOL RESULTS ===`;
+}
+
+/**
+ * 构建模块分组的工具结果摘要（注入到 system prompt）。
+ * 按 moduleId 分组，每组内 web 和 image 结果放在一起，
+ * 让 Phase 3 的 AI 看到图文对应关系。
+ */
+function buildModuleResultsSupplement(
+  toolResults: ToolExecResult[],
+  uiModules: UIModulePlan[],
+): string {
+  if (toolResults.length === 0) return "";
+
+  const moduleMap = new Map<string, UIModulePlan>();
+  for (const mod of uiModules) {
+    moduleMap.set(mod.moduleId, mod);
+  }
+
+  // Group results by moduleId
+  const grouped = new Map<string, ToolExecResult[]>();
+  const ungrouped: ToolExecResult[] = [];
+  for (const tr of toolResults) {
+    const mid = tr.moduleId;
+    if (mid && grouped.has(mid)) {
+      grouped.get(mid)!.push(tr);
+    } else if (mid) {
+      grouped.set(mid, [tr]);
+    } else {
+      ungrouped.push(tr);
+    }
+  }
+
+  let downloadIdx = 0;
+  const sections: string[] = [];
+
+  for (const [moduleId, results] of grouped) {
+    const mod = moduleMap.get(moduleId);
+    const header = mod
+      ? `Module: ${moduleId} — ${mod.purpose} (suggested: ${mod.suggestedComponent})`
+      : `Module: ${moduleId}`;
+
+    const items = results.map((tr) => {
+      const isDownload = tr.toolRequest.toolName === "downloadResource";
+      const sanitized = sanitizeToolResult(
+        tr.result,
+        isDownload ? downloadIdx++ : -1,
+      );
+      return `    ${tr.toolRequest.toolName}("${tr.toolRequest.args.query ?? tr.toolRequest.args.url ?? ""}"): ${JSON.stringify(sanitized).slice(0, 1500)}`;
+    });
+
+    sections.push(`  ${header}\n${items.join("\n")}`);
+  }
+
+  // Append ungrouped results (from plan-derived downloads, etc.)
+  if (ungrouped.length > 0) {
+    const items = ungrouped.map((tr) => {
+      const isDownload = tr.toolRequest.toolName === "downloadResource";
+      const sanitized = sanitizeToolResult(
+        tr.result,
+        isDownload ? downloadIdx++ : -1,
+      );
+      return `    ${tr.toolRequest.toolName}: ${JSON.stringify(sanitized).slice(0, 1500)}`;
+    });
+    sections.push(`  Other results\n${items.join("\n")}`);
+  }
+
+  return `
+
+=== MODULE-SCOPED TOOL RESULTS ===
+The following tools have been executed with data organized by UI module.
+Each module's text and image results are grouped together — use them to populate that module's content.
+${sections.join("\n\n")}
+
+CRITICAL INSTRUCTIONS:
+1. Create UI nodes for EACH module listed above. Do not skip any module.
+2. Use the web results for text/data content and image results for visual content within each module.
+3. For {{DOWNLOADED_IMAGE_N}} placeholders: use them as the "src" field in "image" nodes.
+4. *** MANDATORY: Set diagnostics.simulatedData = false. The data above is REAL, not simulated. ***
+5. *** FORBIDDEN: Do NOT add "Simulated Data" alerts or disclaimers. ***
+6. DO NOT output a loading/placeholder UI — output the FINAL UI with all module data integrated.
+=== END MODULE-SCOPED RESULTS ===`;
 }
 
 function buildImageSlotContractSupplement(
@@ -500,10 +656,38 @@ export async function generateNextAUIRState(
   const model = getModel(
     thinking === true ? "enabled" : thinking === false ? "disabled" : undefined,
   );
+  const pageLogContext = getPageLogContext(request);
 
   // ── Phase 1: 工具决策 ──
+  // 当 Refine 提供了 uiModules 时，直接从 plan 提取工具决策（无需 AI 调用）
   console.log("[generateNextState] Phase 1: deciding tool needs...");
-  const decision = await decideToolNeeds(request);
+  let decision: ToolDecision;
+  const hasFrameworkPlan =
+    refineResult?.uiModules && refineResult.uiModules.length > 0;
+
+  if (hasFrameworkPlan) {
+    decision = deriveToolDecisionFromPlan(refineResult!.uiModules!);
+    console.log(
+      `[generateNextState] Phase 1: derived from plan — ${decision.toolRequests?.length ?? 0} tool(s), ${decision.imageBlueprint?.slots?.length ?? 0} image slot(s)`,
+    );
+    await appendRuntimeLog({
+      type: "ai.exchange",
+      pageLogId: pageLogContext?.pageLogId,
+      sessionId: request.session.sessionId,
+      turn: request.session.turn,
+      stage: "tool_decision",
+      status: "success",
+      durationMs: 0,
+      payload: {
+        source: "plan-derived",
+        moduleCount: refineResult!.uiModules!.length,
+        toolRequestCount: decision.toolRequests?.length ?? 0,
+        imageSlotCount: decision.imageBlueprint?.slots?.length ?? 0,
+      },
+    });
+  } else {
+    decision = await decideToolNeeds(request);
+  }
 
   let toolResults: ToolExecResult[] = [];
 
@@ -704,7 +888,16 @@ export async function generateNextAUIRState(
   }
   // 工具结果注入 system prompt（而非 user prompt）
   if (toolResults.length > 0) {
-    systemPrompt += buildToolResultsSupplement(toolResults);
+    if (hasFrameworkPlan && refineResult?.uiModules) {
+      // 模块分组结果（图文对应）
+      systemPrompt += buildModuleResultsSupplement(
+        toolResults,
+        refineResult.uiModules,
+      );
+    } else {
+      // 扁平结果（现有行为）
+      systemPrompt += buildToolResultsSupplement(toolResults);
+    }
   }
   if (decision.imageBlueprint && decision.imageBlueprint.slots.length > 0) {
     systemPrompt += buildImageSlotContractSupplement(

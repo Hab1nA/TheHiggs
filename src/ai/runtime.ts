@@ -174,6 +174,26 @@ export async function runAIRuntime(
         response.diagnostics.modelUsed =
           (response.diagnostics.modelUsed ?? "") + " + " + tags.join(" + ");
       }
+
+      // Attach framework plan diagnostics when refine provided uiModules
+      if (refineResult?.uiModules && refineResult.uiModules.length > 0) {
+        const modulesWithTools = refineResult.uiModules.filter(
+          (m) => m.searchQueries && (m.searchQueries.web?.length || m.searchQueries.image?.length),
+        ).length;
+        const totalSearchQueries = refineResult.uiModules.reduce(
+          (sum, m) =>
+            sum +
+            (m.searchQueries?.web?.length ?? 0) +
+            (m.searchQueries?.image?.length ?? 0),
+          0,
+        );
+        (response.diagnostics as Record<string, unknown>).frameworkPlan = {
+          moduleCount: refineResult.uiModules.length,
+          modulesWithTools,
+          totalSearchQueries,
+          source: "plan-derived",
+        };
+      }
     }
 
     // ── Step 3 (optional): Post-Process Mode ──
