@@ -14,6 +14,8 @@ import { buildAUIRSystemPrompt } from "@/auir/prompt";
 import { auirResponseSchema } from "@/auir/schema";
 import type { AUIRRequest, AUIRResponse, UINode } from "@/auir/types";
 import { validateOrRetry } from "@/auir/validate";
+import { appendRuntimeLog } from "@/runtime/logging/server";
+import type { PageLogContext } from "@/runtime/logging/types";
 import { generateObject } from "ai";
 import { z } from "zod";
 import { getModel } from "./model";
@@ -66,6 +68,7 @@ const toolDecisionSchema = z
 /** 轻量级工具决策：判断是否需要联网/下载资源 */
 async function decideToolNeeds(request: AUIRRequest): Promise<ToolDecision> {
   const model = getModel("disabled"); // 禁用 thinking 以提高 JSON 可靠性
+  const pageLogContext = getPageLogContext(request);
 
   const systemPrompt = `You are a tool decision engine. Given a user request, decide if external tools (web search or resource download) are needed BEFORE generating a UI.
 
@@ -141,28 +144,65 @@ Output ONLY valid JSON. No markdown fences, no explanations.`;
       ? { sessionContext: request.memory.session }
       : {}),
   };
+  const promptObj = {
+    event: eventSummary,
+    instruction:
+      "Decide if tools are needed. Output ONLY the JSON decision object.",
+  };
+  const startedAt = Date.now();
 
   try {
     const result = await generateObject({
       model,
       schema: toolDecisionSchema,
       system: systemPrompt,
-      prompt: JSON.stringify({
-        event: eventSummary,
-        instruction:
-          "Decide if tools are needed. Output ONLY the JSON decision object.",
-      }),
+      prompt: JSON.stringify(promptObj),
       mode: "json",
       temperature: 0.1,
       maxTokens: 4000,
     });
 
+    await appendRuntimeLog({
+      type: "ai.exchange",
+      pageLogId: pageLogContext?.pageLogId,
+      sessionId: request.session.sessionId,
+      turn: request.session.turn,
+      stage: "tool_decision",
+      status: "success",
+      durationMs: Date.now() - startedAt,
+      payload: {
+        request: {
+          system: systemPrompt,
+          prompt: promptObj,
+          options: { mode: "json", temperature: 0.1, maxTokens: 4000 },
+        },
+        response: result.object,
+      },
+    });
     return result.object as ToolDecision;
   } catch (err) {
     console.warn(
       "[toolDecision] Failed, assuming no tools needed:",
       (err as Error).message?.slice(0, 100),
     );
+    await appendRuntimeLog({
+      type: "ai.exchange",
+      pageLogId: pageLogContext?.pageLogId,
+      sessionId: request.session.sessionId,
+      turn: request.session.turn,
+      stage: "tool_decision",
+      status: "failure",
+      durationMs: Date.now() - startedAt,
+      payload: {
+        request: {
+          system: systemPrompt,
+          prompt: promptObj,
+          options: { mode: "json", temperature: 0.1, maxTokens: 4000 },
+        },
+        error: err instanceof Error ? err.message : String(err),
+        fallbackDecision: { needsTools: false },
+      },
+    });
     return { needsTools: false };
   }
 }
@@ -188,20 +228,43 @@ async function executeRequestedTools(
     args: Record<string, unknown>;
     reason: string;
   }>,
+  request: AUIRRequest,
 ): Promise<ToolExecResult[]> {
   const results: ToolExecResult[] = [];
+  const pageLogContext = getPageLogContext(request);
 
   for (const tr of toolRequests) {
+    const startedAt = Date.now();
     try {
       console.log(`[executeTools] Executing: ${tr.toolName} (${tr.id})`);
       const execResult = await executeTool(tr.toolName, tr.args);
       results.push({ toolRequest: tr, result: execResult.result });
+      await appendRuntimeLog({
+        type: "tool.execution",
+        pageLogId: pageLogContext?.pageLogId,
+        sessionId: request.session.sessionId,
+        turn: request.session.turn,
+        stage: "tool_execution",
+        status: "success",
+        durationMs: Date.now() - startedAt,
+        payload: { toolRequest: tr, result: execResult },
+      });
       console.log(
         `[executeTools] ${tr.toolName} completed (source: ${execResult.source})`,
       );
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
       console.error(`[executeTools] ${tr.toolName} failed:`, errMsg);
+      await appendRuntimeLog({
+        type: "tool.execution",
+        pageLogId: pageLogContext?.pageLogId,
+        sessionId: request.session.sessionId,
+        turn: request.session.turn,
+        stage: "tool_execution",
+        status: "failure",
+        durationMs: Date.now() - startedAt,
+        payload: { toolRequest: tr, error: errMsg },
+      });
       results.push({
         toolRequest: tr,
         result: { error: `Tool execution failed: ${errMsg}` },
@@ -355,7 +418,7 @@ export async function generateNextAUIRState(
       `[generateNextState] Phase 2: executing ${decision.toolRequests.length} tool(s):`,
       decision.toolRequests.map((t) => t.toolName).join(", "),
     );
-    toolResults = await executeRequestedTools(decision.toolRequests);
+    toolResults = await executeRequestedTools(decision.toolRequests, request);
 
     // Phase 2.5: 自动从搜索结果中提取图片 URL 并下载
     // 处理 imageSearch 结果：直接提取 imageUrl
@@ -427,7 +490,10 @@ export async function generateNextAUIRState(
         args: { url, expectedType: "image" as const },
         reason: "Auto-download image found in webSearch results",
       }));
-      const autoResults = await executeRequestedTools(autoDownloadRequests);
+      const autoResults = await executeRequestedTools(
+        autoDownloadRequests,
+        request,
+      );
       toolResults.push(...autoResults);
     }
   } else {
@@ -472,6 +538,7 @@ export async function generateNextAUIRState(
     systemPrompt,
     promptObj,
     request.constraints,
+    request,
   );
 
   // NOTE: 图片占位符替换和真实数据标记已移至 runtime.ts 在后处理之后执行。
@@ -479,7 +546,22 @@ export async function generateNextAUIRState(
 
   // ── Post-process: 检测并修复 loading/placeholder 页面（无论是否有工具结果）──
   if (response) {
-    detectAndFixLoadingPage(response);
+    const injectedTimerRefresh = detectAndFixLoadingPage(response);
+    if (injectedTimerRefresh) {
+      const pageLogContext = getPageLogContext(request);
+      await appendRuntimeLog({
+        type: "validation.loading_page.fixed",
+        pageLogId: pageLogContext?.pageLogId,
+        sessionId: request.session.sessionId,
+        turn: request.session.turn,
+        stage: "validation",
+        status: "success",
+        payload: {
+          message:
+            "AI returned a loading page without timer_refresh; auto-refresh timer injected.",
+        },
+      });
+    }
   }
 
   return { response, toolResults };
@@ -495,8 +577,11 @@ async function generateWithRetry(
   systemPrompt: string,
   promptObj: Record<string, unknown>,
   constraints?: import("@/auir/types").AUIRConstraints,
+  request?: AUIRRequest,
 ): Promise<AUIRResponse> {
+  const pageLogContext = request ? getPageLogContext(request) : undefined;
   // 尝试 1: 正常生成（maxTokens: 12000）
+  let attemptStartedAt = Date.now();
   try {
     console.log(
       "[generateWithRetry] Attempt 1: full generation (65536 tokens)",
@@ -514,15 +599,52 @@ async function generateWithRetry(
         }).then((r) => r.object),
       constraints,
     );
+    await appendRuntimeLog({
+      type: "ai.exchange",
+      pageLogId: pageLogContext?.pageLogId,
+      sessionId: request?.session.sessionId,
+      turn: request?.session.turn,
+      stage: "ui_generation",
+      status: "success",
+      durationMs: Date.now() - attemptStartedAt,
+      payload: {
+        attempt: 1,
+        request: {
+          system: systemPrompt,
+          prompt: promptObj,
+          options: { mode: "json", temperature: 0.4, maxTokens: 65536 },
+        },
+        response,
+      },
+    });
     return response;
   } catch (err) {
     console.warn(
       "[generateWithRetry] Attempt 1 failed:",
       (err as Error).message?.slice(0, 100),
     );
+    await appendRuntimeLog({
+      type: "ai.exchange",
+      pageLogId: pageLogContext?.pageLogId,
+      sessionId: request?.session.sessionId,
+      turn: request?.session.turn,
+      stage: "ui_generation",
+      status: "failure",
+      durationMs: Date.now() - attemptStartedAt,
+      payload: {
+        attempt: 1,
+        request: {
+          system: systemPrompt,
+          prompt: promptObj,
+          options: { mode: "json", temperature: 0.4, maxTokens: 65536 },
+        },
+        error: err instanceof Error ? err.message : String(err),
+      },
+    });
   }
 
   // 尝试 2: 截断 system prompt + 降低 temperature
+  attemptStartedAt = Date.now();
   try {
     console.log(
       "[generateWithRetry] Attempt 2: truncated system prompt (32000 tokens)",
@@ -546,15 +668,51 @@ async function generateWithRetry(
         }).then((r) => r.object),
       constraints,
     );
+    await appendRuntimeLog({
+      type: "ai.exchange",
+      pageLogId: pageLogContext?.pageLogId,
+      sessionId: request?.session.sessionId,
+      turn: request?.session.turn,
+      stage: "ui_generation",
+      status: "success",
+      durationMs: Date.now() - attemptStartedAt,
+      payload: {
+        attempt: 2,
+        request: {
+          system: shortSystem,
+          prompt: promptObj,
+          options: { mode: "json", temperature: 0.3, maxTokens: 32000 },
+        },
+        response,
+      },
+    });
     return response;
   } catch (err) {
     console.warn(
       "[generateWithRetry] Attempt 2 failed:",
       (err as Error).message?.slice(0, 100),
     );
+    await appendRuntimeLog({
+      type: "ai.exchange",
+      pageLogId: pageLogContext?.pageLogId,
+      sessionId: request?.session.sessionId,
+      turn: request?.session.turn,
+      stage: "ui_generation",
+      status: "failure",
+      durationMs: Date.now() - attemptStartedAt,
+      payload: {
+        attempt: 2,
+        request: {
+          prompt: promptObj,
+          options: { mode: "json", temperature: 0.3, maxTokens: 32000 },
+        },
+        error: err instanceof Error ? err.message : String(err),
+      },
+    });
   }
 
   // 尝试 3: 最小化 prompt，不含工具结果
+  attemptStartedAt = Date.now();
   try {
     console.log("[generateWithRetry] Attempt 3: minimal prompt (no tools)");
     const minimalSystem = buildAUIRSystemPrompt();
@@ -577,17 +735,58 @@ async function generateWithRetry(
         }).then((r) => r.object),
       constraints,
     );
+    await appendRuntimeLog({
+      type: "ai.exchange",
+      pageLogId: pageLogContext?.pageLogId,
+      sessionId: request?.session.sessionId,
+      turn: request?.session.turn,
+      stage: "ui_generation",
+      status: "success",
+      durationMs: Date.now() - attemptStartedAt,
+      payload: {
+        attempt: 3,
+        request: {
+          system: minimalSystem,
+          prompt: minimalPrompt,
+          options: { mode: "json", temperature: 0.3, maxTokens: 32000 },
+        },
+        response,
+      },
+    });
     return response;
   } catch (err) {
     console.error(
       "[generateWithRetry] All attempts failed:",
       (err as Error).message?.slice(0, 200),
     );
+    await appendRuntimeLog({
+      type: "ai.exchange",
+      pageLogId: pageLogContext?.pageLogId,
+      sessionId: request?.session.sessionId,
+      turn: request?.session.turn,
+      stage: "ui_generation",
+      status: "failure",
+      durationMs: Date.now() - attemptStartedAt,
+      payload: {
+        attempt: 3,
+        error: err instanceof Error ? err.message : String(err),
+      },
+    });
   }
 
   // 最终降级: 返回基础 UI
   console.error("[generateWithRetry] Falling back to basic UI generation");
-  return createBasicFallbackResponse(promptObj);
+  const fallback = createBasicFallbackResponse(promptObj);
+  await appendRuntimeLog({
+    type: "ui_generation.fallback",
+    pageLogId: pageLogContext?.pageLogId,
+    sessionId: request?.session.sessionId,
+    turn: request?.session.turn,
+    stage: "ui_generation",
+    status: "failure",
+    payload: { response: fallback },
+  });
+  return fallback;
 }
 
 /** 创建基础降级响应 */
@@ -1048,9 +1247,9 @@ const LOADING_KEYWORDS = [
  *
  * 三阶段架构中 Phase 3 是最终调用，不应返回 loading 状态。
  */
-function detectAndFixLoadingPage(response: AUIRResponse): void {
+function detectAndFixLoadingPage(response: AUIRResponse): boolean {
   const ui = response.next.ui;
-  if (!ui || typeof ui !== "object") return;
+  if (!ui || typeof ui !== "object") return false;
 
   const root = ui as Record<string, unknown>;
   let isLoadingPage = false;
@@ -1084,7 +1283,7 @@ function detectAndFixLoadingPage(response: AUIRResponse): void {
     }
   }
 
-  if (!isLoadingPage) return;
+  if (!isLoadingPage) return false;
 
   // Check if timer_refresh already exists in the UI tree
   const hasTimerRefresh = walkFindTimerRefresh(ui);
@@ -1092,7 +1291,7 @@ function detectAndFixLoadingPage(response: AUIRResponse): void {
     console.log(
       "[detectLoading] Loading page has timer_refresh — intentional, allowing auto-refresh",
     );
-    return;
+    return false;
   }
 
   console.warn(
@@ -1138,6 +1337,7 @@ function detectAndFixLoadingPage(response: AUIRResponse): void {
   }
 
   console.log("[detectLoading] Injected timer_refresh into loading page");
+  return true;
 }
 
 /** 递归搜索 UI 树中是否存在 timer_refresh 节点 */
@@ -1167,4 +1367,16 @@ function walkFindTimerRefresh(node: unknown): boolean {
     }
   }
   return false;
+}
+
+function getPageLogContext(request: AUIRRequest): PageLogContext | undefined {
+  if (!request.session.pageLogId || !request.session.pageStartedAt) {
+    return undefined;
+  }
+  return {
+    pageLogId: request.session.pageLogId,
+    pageStartedAt: request.session.pageStartedAt,
+    sessionId: request.session.sessionId,
+    initialQuery: request.session.initialQuery,
+  };
 }

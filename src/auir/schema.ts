@@ -911,6 +911,9 @@ export const auirSessionSchema = z.object({
   sessionId: z.string(),
   appId: z.string().optional(),
   turn: z.number(),
+  pageLogId: z.string().optional(),
+  pageStartedAt: z.string().optional(),
+  initialQuery: z.string().optional(),
 });
 
 export const auirAppDescriptorSchema = z.object({

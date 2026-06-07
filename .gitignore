@@ -67,6 +67,7 @@ Desktop.ini
 # Dev sessions
 /tmp/
 /scratch/
+/runtime-logs/
 .vscode/
 *.swp
 *.swo

@@ -6,13 +6,14 @@
 
 import type { AUIREvent } from "@/auir/types";
 import { createAppSearchEvent } from "@/runtime/event";
+import type { PageLogContext } from "@/runtime/logging/types";
 import { useCallback, useState, type FormEvent } from "react";
 
 export default function SearchLauncher({
   onSearch,
   disabled,
 }: {
-  onSearch: (event: AUIREvent) => void;
+  onSearch: (event: AUIREvent, pageLogContext?: PageLogContext) => void;
   disabled?: boolean;
 }) {
   const [query, setQuery] = useState("");
@@ -27,6 +28,7 @@ export default function SearchLauncher({
       e.preventDefault();
       const trimmed = query.trim();
       if (!trimmed || disabled || refining) return;
+      const pageLogContext = createPageLogContext(trimmed);
 
       if (refineMode) {
         // Two-step: refine first, then search
@@ -35,7 +37,7 @@ export default function SearchLauncher({
           const res = await fetch("/api/refine", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ query: trimmed }),
+            body: JSON.stringify({ query: trimmed, pageLogContext }),
           });
           if (!res.ok) {
             console.error("[SearchLauncher] Refine API error:", res.status);
@@ -44,6 +46,7 @@ export default function SearchLauncher({
                 thinking: thinkingMode,
                 postProcess: postProcessMode,
               }),
+              pageLogContext,
             );
             return;
           }
@@ -64,6 +67,7 @@ export default function SearchLauncher({
                   suggestedComponents: data.suggestedComponents,
                 },
               }),
+              pageLogContext,
             );
           } else {
             console.error("[SearchLauncher] Refine failed:", data.error);
@@ -72,6 +76,7 @@ export default function SearchLauncher({
                 thinking: thinkingMode,
                 postProcess: postProcessMode,
               }),
+              pageLogContext,
             );
           }
         } catch (err) {
@@ -81,6 +86,7 @@ export default function SearchLauncher({
               thinking: thinkingMode,
               postProcess: postProcessMode,
             }),
+            pageLogContext,
           );
         } finally {
           setRefining(false);
@@ -97,6 +103,7 @@ export default function SearchLauncher({
             thinking: thinkingMode,
             postProcess: postProcessMode,
           }),
+          pageLogContext,
         );
       }
     },
@@ -402,4 +409,12 @@ export default function SearchLauncher({
       </div>
     </div>
   );
+}
+
+function createPageLogContext(initialQuery: string): PageLogContext {
+  return {
+    pageLogId: `page_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    pageStartedAt: new Date().toISOString(),
+    initialQuery,
+  };
 }

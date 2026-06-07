@@ -8,6 +8,8 @@
 import { generateObject } from "ai";
 import { z } from "zod";
 import { getModel } from "./model";
+import { appendRuntimeLog } from "@/runtime/logging/server";
+import type { PageLogContext } from "@/runtime/logging/types";
 
 /** Refine 输出 schema */
 const refineOutputSchema = z.object({
@@ -77,8 +79,12 @@ Output ONLY valid JSON conforming to the schema. No markdown, no explanations.`;
 }
 
 /** Refine a short user query into a detailed UI generation prompt */
-export async function refineUserQuery(query: string): Promise<RefineOutput> {
+export async function refineUserQuery(
+  query: string,
+  pageLogContext?: PageLogContext,
+): Promise<RefineOutput> {
   const model = getModel();
+  const systemPrompt = buildRefineSystemPrompt();
 
   const promptObj = {
     userQuery: query,
@@ -88,18 +94,56 @@ export async function refineUserQuery(query: string): Promise<RefineOutput> {
       "interactions, data, visual design, and edge cases. " +
       "Output ONLY valid JSON.",
   };
+  const startedAt = Date.now();
 
-  const result = await generateObject({
-    model,
-    schema: refineOutputSchema,
-    system: buildRefineSystemPrompt(),
-    prompt: JSON.stringify(promptObj),
-    mode: "json",
-    temperature: 0.6,
-    maxTokens: 8000,
-  });
+  try {
+    const result = await generateObject({
+      model,
+      schema: refineOutputSchema,
+      system: systemPrompt,
+      prompt: JSON.stringify(promptObj),
+      mode: "json",
+      temperature: 0.6,
+      maxTokens: 8000,
+    });
 
-  return result.object;
+    await appendRuntimeLog({
+      type: "ai.exchange",
+      pageLogId: pageLogContext?.pageLogId,
+      sessionId: pageLogContext?.sessionId,
+      stage: "refine",
+      status: "success",
+      durationMs: Date.now() - startedAt,
+      payload: {
+        request: {
+          system: systemPrompt,
+          prompt: promptObj,
+          options: { mode: "json", temperature: 0.6, maxTokens: 8000 },
+        },
+        response: result.object,
+      },
+    });
+
+    return result.object;
+  } catch (error) {
+    await appendRuntimeLog({
+      type: "ai.exchange",
+      pageLogId: pageLogContext?.pageLogId,
+      sessionId: pageLogContext?.sessionId,
+      stage: "refine",
+      status: "failure",
+      durationMs: Date.now() - startedAt,
+      payload: {
+        request: {
+          system: systemPrompt,
+          prompt: promptObj,
+          options: { mode: "json", temperature: 0.6, maxTokens: 8000 },
+        },
+        error: error instanceof Error ? error.message : String(error),
+      },
+    });
+    throw error;
+  }
 }
 
 /** Build an enhanced AUIR system prompt supplement from refinement output */

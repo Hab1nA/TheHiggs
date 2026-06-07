@@ -19,7 +19,8 @@ import DebugPanel from "@/components/DebugPanel";
 import ErrorPanel from "@/components/ErrorPanel";
 import LoadingOverlay from "@/components/LoadingOverlay";
 import SearchLauncher from "@/components/SearchLauncher";
-import { sendAUIRRequest } from "@/runtime/client";
+import { postRuntimeLog, sendAUIRRequest } from "@/runtime/client";
+import type { PageLogContext } from "@/runtime/logging/types";
 import Renderer, { AppContextProvider } from "@/runtime/Renderer";
 import {
   createInitialLocalUIState,
@@ -42,18 +43,42 @@ export default function Home() {
   const [diagnostics, setDiagnostics] = useState<
     Record<string, unknown> | undefined
   >(undefined);
+  const [pageLogContext, setPageLogContext] = useState<PageLogContext | null>(
+    null,
+  );
 
   const isLauncher = !auirState || auirState.app.kind === "launcher";
 
-  const handleSetLocalValue = useCallback((binding: string, value: unknown) => {
-    setLocalState((prev) => updateLocalValue(prev, binding, value));
-  }, []);
+  const handleSetLocalValue = useCallback(
+    (binding: string, value: unknown) => {
+      setLocalState((prev) => {
+        const previousValue = prev.values[binding];
+        const next = updateLocalValue(prev, binding, value);
+        void postRuntimeLog(pageLogContext, {
+          type: "frontend.local_state.changed",
+          turn,
+          stage: "frontend",
+          status: "success",
+          payload: { binding, previousValue, nextValue: value },
+        });
+        return next;
+      });
+    },
+    [pageLogContext, turn],
+  );
 
   const handleAIEvent = useCallback(
-    async (event: AUIREvent) => {
+    async (event: AUIREvent, incomingPageLogContext?: PageLogContext) => {
       setLoading(true);
       setError(null);
       const nextTurn = turn + 1;
+      const activePageLogContext = incomingPageLogContext ?? pageLogContext;
+      const requestPageLogContext = activePageLogContext
+        ? { ...activePageLogContext, sessionId: _sessionId }
+        : null;
+      if (incomingPageLogContext) {
+        setPageLogContext(requestPageLogContext);
+      }
       const request: AUIRRequest = {
         protocol: "AUIR",
         version: "0.3",
@@ -61,6 +86,9 @@ export default function Home() {
           sessionId: _sessionId,
           appId: auirState?.app.id,
           turn: nextTurn,
+          pageLogId: requestPageLogContext?.pageLogId,
+          pageStartedAt: requestPageLogContext?.pageStartedAt,
+          initialQuery: requestPageLogContext?.initialQuery,
         },
         previous: auirState,
         event,
@@ -69,6 +97,13 @@ export default function Home() {
         availableTools: [],
       };
       try {
+        await postRuntimeLog(requestPageLogContext, {
+          type: "frontend.ai_event.dispatched",
+          turn: nextTurn,
+          stage: "frontend",
+          status: "started",
+          payload: { event, previousApp: auirState?.app ?? null },
+        });
         const response: AUIRResponse = await sendAUIRRequest(request);
         setAUIRState(response.next);
         setTurn(nextTurn);
@@ -84,19 +119,56 @@ export default function Home() {
         if (response.diagnostics) {
           setDiagnostics(response.diagnostics as Record<string, unknown>);
         }
+        await postRuntimeLog(requestPageLogContext, {
+          type: "frontend.ai_response.applied",
+          turn: nextTurn,
+          stage: "frontend",
+          status: "success",
+          payload: {
+            nextApp: response.next.app,
+            diagnostics: response.diagnostics,
+          },
+        });
+        if (
+          event.type === "runtime.command" &&
+          event.command === "back_to_launcher"
+        ) {
+          await postRuntimeLog(requestPageLogContext, {
+            type: "page.closed",
+            turn: nextTurn,
+            stage: "frontend",
+            status: "success",
+            payload: { reason: "back_to_launcher" },
+          });
+          setPageLogContext(null);
+        }
         setError(null);
       } catch (err) {
         const message = err instanceof Error ? err.message : "Unknown error";
         setError(message);
+        await postRuntimeLog(requestPageLogContext, {
+          type: "frontend.ai_event.error",
+          turn: nextTurn,
+          stage: "frontend",
+          status: "failure",
+          payload: { event, error: message },
+        });
         console.error("[Home] AI event error:", err);
       } finally {
         setLoading(false);
       }
     },
-    [turn, memory, auirState],
+    [turn, memory, auirState, pageLogContext],
   );
 
-  const handleRestart = useCallback(() => {
+  const handleRestart = useCallback(async () => {
+    await postRuntimeLog(pageLogContext, {
+      type: "page.closed",
+      turn,
+      stage: "frontend",
+      status: "success",
+      payload: { reason: "restart" },
+    });
     _sessionId = `sess_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     setAUIRState(null);
     setMemory(createInitialMemory());
@@ -104,8 +176,9 @@ export default function Home() {
     setTurn(0);
     setError(null);
     setDiagnostics(undefined);
+    setPageLogContext(null);
     setLoading(false);
-  }, []);
+  }, [pageLogContext, turn]);
 
   return (
     <>

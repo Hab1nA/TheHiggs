@@ -12,6 +12,8 @@
 // ============================================================
 
 import type { UINode } from "@/auir/types";
+import { appendRuntimeLog } from "@/runtime/logging/server";
+import type { PageLogContext } from "@/runtime/logging/types";
 import type { LanguageModelV1 } from "ai";
 import { generateText } from "ai";
 import { getModel } from "./model";
@@ -310,6 +312,7 @@ function extractJSON(text: string): string {
 export async function postProcessUIState(
   input: PostProcessInput,
   modelOverride?: LanguageModelV1,
+  pageLogContext?: PageLogContext,
 ): Promise<PostProcessOutput> {
   const model = modelOverride ?? getModel("disabled"); // 关闭 thinking 提高 JSON 可靠性
 
@@ -331,6 +334,7 @@ export async function postProcessUIState(
     `prevUI=${input.previousUI ? "yes" : "no"}, newUI nodes≈${JSON.stringify(input.newUI).length} chars`,
   );
 
+  const startedAt = Date.now();
   try {
     const result = await generateText({
       model,
@@ -342,6 +346,22 @@ export async function postProcessUIState(
 
     const rawText = result.text;
     console.log(`[PostProcess] AI response received: ${rawText.length} chars`);
+    await appendRuntimeLog({
+      type: "ai.exchange",
+      pageLogId: pageLogContext?.pageLogId,
+      sessionId: pageLogContext?.sessionId,
+      stage: "post_process",
+      status: "success",
+      durationMs: Date.now() - startedAt,
+      payload: {
+        request: {
+          system: systemPrompt,
+          prompt: userPrompt,
+          options: { temperature: 0.2, maxTokens: 12000 },
+        },
+        response: rawText,
+      },
+    });
 
     // 清洗并解析 JSON
     const cleaned = extractJSON(rawText);
@@ -406,6 +426,22 @@ export async function postProcessUIState(
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
     console.error("[PostProcess] AI call failed:", errMsg.slice(0, 200));
+    await appendRuntimeLog({
+      type: "ai.exchange",
+      pageLogId: pageLogContext?.pageLogId,
+      sessionId: pageLogContext?.sessionId,
+      stage: "post_process",
+      status: "failure",
+      durationMs: Date.now() - startedAt,
+      payload: {
+        request: {
+          system: systemPrompt,
+          prompt: userPrompt,
+          options: { temperature: 0.2, maxTokens: 12000 },
+        },
+        error: errMsg,
+      },
+    });
     return {
       correctedUI: input.newUI,
       changes: [],

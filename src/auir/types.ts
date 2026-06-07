@@ -39,6 +39,9 @@ export type AUIRSession = {
   sessionId: string;
   appId?: string;
   turn: number;
+  pageLogId?: string;
+  pageStartedAt?: string;
+  initialQuery?: string;
 };
 
 // -----------------------------------------------------------
