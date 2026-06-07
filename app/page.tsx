@@ -5,14 +5,14 @@
 "use client";
 
 import { defaultConstraints } from "@/auir/constraints";
-import { createInitialMemory } from "@/auir/memory";
+import { applyMemoryPatch, createInitialMemory } from "@/auir/memory";
 import type {
-    AUIREvent,
-    AUIRMemory,
-    AUIRRequest,
-    AUIRResponse,
-    AUIRState,
-    LocalUIState,
+  AUIREvent,
+  AUIRMemory,
+  AUIRRequest,
+  AUIRResponse,
+  AUIRState,
+  LocalUIState,
 } from "@/auir/types";
 import AUIRInspector from "@/components/AUIRInspector";
 import DebugPanel from "@/components/DebugPanel";
@@ -23,13 +23,71 @@ import { postRuntimeLog, sendAUIRRequest } from "@/runtime/client";
 import type { PageLogContext } from "@/runtime/logging/types";
 import Renderer, { AppContextProvider } from "@/runtime/Renderer";
 import {
-    createInitialLocalUIState,
-    hydrateLocalStateFromAUIRState,
-    setLocalValue as updateLocalValue,
+  createInitialLocalUIState,
+  hydrateLocalStateFromAUIRState,
+  setLocalValue as updateLocalValue,
 } from "@/runtime/state";
 import { useCallback, useRef, useState } from "react";
 
 let _sessionId = `sess_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+/** Memory JSON 超过此字符数时触发异步压缩（~8KB ≈ 2,500 tokens） */
+const MEMORY_COMPRESS_THRESHOLD = 8000;
+
+/**
+ * 异步压缩膨胀的 memory。
+ * 在页面生成完成后 fire-and-forget 调用，不阻塞 UI。
+ * 压缩成功后静默替换 memory 状态。
+ */
+async function compressMemoryIfNeeded(
+  currentMemory: AUIRMemory,
+  setMemory: React.Dispatch<React.SetStateAction<AUIRMemory>>,
+): Promise<void> {
+  const serialized = JSON.stringify(currentMemory);
+  if (serialized.length < MEMORY_COMPRESS_THRESHOLD) return;
+
+  console.log(
+    `[compress-memory] Triggering: ${serialized.length} chars > ${MEMORY_COMPRESS_THRESHOLD} threshold`,
+  );
+
+  try {
+    const res = await fetch("/api/compress-memory", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        memory: currentMemory,
+        currentSize: serialized.length,
+      }),
+    });
+
+    if (!res.ok) {
+      console.warn("[compress-memory] Server returned", res.status);
+      return;
+    }
+
+    const data = await res.json();
+    if (!data.ok || !data.compressed) {
+      console.warn("[compress-memory] Compression failed:", data.error);
+      return;
+    }
+
+    // Replace session/app memory with compressed version,
+    // preserve turn and user layers.
+    setMemory((prev) => ({
+      ...prev,
+      session: data.compressed.session ?? prev.session,
+      app: data.compressed.app ?? prev.app,
+    }));
+
+    const newSize = JSON.stringify(data.compressed).length;
+    console.log(
+      `[compress-memory] Done: ${serialized.length} → ${newSize} chars (${Math.round((1 - newSize / serialized.length) * 100)}% reduction)`,
+    );
+  } catch (err) {
+    // Non-critical: silently keep original memory
+    console.warn("[compress-memory] Request failed:", err);
+  }
+}
 
 export default function Home() {
   const [auirState, setAUIRState] = useState<AUIRState | null>(null);
@@ -51,7 +109,16 @@ export default function Home() {
   const isLauncher = !auirState || auirState.app.kind === "launcher";
 
   const handleSetLocalValue = useCallback(
-    (binding: string, value: unknown, meta?: { componentId?: string; componentType?: string; label?: string; interactionMode?: string }) => {
+    (
+      binding: string,
+      value: unknown,
+      meta?: {
+        componentId?: string;
+        componentType?: string;
+        label?: string;
+        interactionMode?: string;
+      },
+    ) => {
       setLocalState((prev) => {
         const previousValue = prev.values[binding];
         const next = updateLocalValue(prev, binding, value);
@@ -114,20 +181,34 @@ export default function Home() {
         const response: AUIRResponse = await sendAUIRRequest(request);
         setAUIRState(response.next);
         setTurn(nextTurn);
-        if (response.next?.memory) {
-          setMemory((prev) => ({
-            ...prev,
-            app: { ...prev.app, ...response.next.memory.app },
-            session: { ...prev.session, ...response.next.memory.session },
-            turn: { eventType: event.type, eventId: event.eventId },
-          }));
-        }
+        // Compute next memory for size check (functional update handles batching)
+        const patchedForCheck = response.memoryPatch
+          ? applyMemoryPatch(memory, response.memoryPatch)
+          : memory;
+        const nextMemory: AUIRMemory = {
+          ...patchedForCheck,
+          ...(response.next?.memory
+            ? {
+                app: { ...patchedForCheck.app, ...response.next.memory.app },
+                session: {
+                  ...patchedForCheck.session,
+                  ...response.next.memory.session,
+                },
+              }
+            : {}),
+          turn: { eventType: event.type, eventId: event.eventId },
+        };
+        setMemory(nextMemory);
+        // Fire-and-forget: compress memory if it's too large
+        void compressMemoryIfNeeded(nextMemory, setMemory);
         setLocalState(hydrateLocalStateFromAUIRState(response.next));
         if (response.diagnostics) {
           setDiagnostics(response.diagnostics as Record<string, unknown>);
         }
         if (response.diagnostics?.simulatedData) {
-          console.warn("[TheHiggs] AI response is a mock fallback (simulatedData=true). Check runtime log for details.");
+          console.warn(
+            "[TheHiggs] AI response is a mock fallback (simulatedData=true). Check runtime log for details.",
+          );
         }
         await postRuntimeLog(requestPageLogContext, {
           type: "frontend.ai_response.applied",
@@ -150,6 +231,14 @@ export default function Home() {
             status: "success",
             payload: { reason: "back_to_launcher" },
           });
+          // Clear all app-scoped state: memory, session ID, turn counter,
+          // local state and diagnostics. This ensures the next app launched
+          // from the launcher starts with a clean slate.
+          _sessionId = `sess_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+          setMemory(createInitialMemory());
+          setLocalState(createInitialLocalUIState());
+          setTurn(0);
+          setDiagnostics(undefined);
           setPageLogContext(null);
         }
         setError(null);

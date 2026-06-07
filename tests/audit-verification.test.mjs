@@ -24,11 +24,17 @@ function compileSanitizer() {
     [
       "node_modules/typescript/bin/tsc",
       "src/runtime/logging/sanitize.ts",
-      "--target", "ES2022",
-      "--module", "NodeNext",
-      "--moduleResolution", "NodeNext",
-      "--outDir", outDir,
-      "--skipLibCheck", "--strict", "--esModuleInterop",
+      "--target",
+      "ES2022",
+      "--module",
+      "NodeNext",
+      "--moduleResolution",
+      "NodeNext",
+      "--outDir",
+      outDir,
+      "--skipLibCheck",
+      "--strict",
+      "--esModuleInterop",
     ],
     { cwd: root, stdio: "pipe" },
   );
@@ -67,17 +73,12 @@ test("问题1: /api/runtime-log 路由返回真实写入状态", () => {
     src.includes("const appended = await appendRuntimeLog(event)"),
     "路由必须接收 appendRuntimeLog 的返回值",
   );
-  assert.ok(
-    src.includes("!appended"),
-    "路由必须检查写入是否成功",
-  );
+  assert.ok(src.includes("!appended"), "路由必须检查写入是否成功");
   // 写入失败时应返回非 200 状态码
-  assert.ok(
-    src.includes("422"),
-    "写入失败应返回 422 而非总是 200",
-  );
+  assert.ok(src.includes("422"), "写入失败应返回 422 而非总是 200");
   // 不应有「总是返回 ok: true」的模式
-  const alwaysOkPattern = /await appendRuntimeLog\(event\);\s*return NextResponse\.json\(\{ ok: true \}\)/;
+  const alwaysOkPattern =
+    /await appendRuntimeLog\(event\);\s*return NextResponse\.json\(\{ ok: true \}\)/;
   assert.ok(
     !alwaysOkPattern.test(src),
     "不应存在「调用 appendRuntimeLog 后无条件返回 ok: true」的代码",
@@ -93,10 +94,7 @@ test("问题1: appendRuntimeLog 返回 boolean 指示成功/失败", () => {
     "appendRuntimeLog 返回类型应为 Promise<boolean>",
   );
   // 成功时返回 true
-  assert.ok(
-    src.includes("return true"),
-    "成功写入时应返回 true",
-  );
+  assert.ok(src.includes("return true"), "成功写入时应返回 true");
   // 失败时返回 false
   const falseReturns = src.match(/return false/g);
   assert.ok(
@@ -252,18 +250,9 @@ test("问题5: ComponentInteractionMeta 类型已定义并导出", () => {
     src.includes("export type ComponentInteractionMeta"),
     "ComponentInteractionMeta 应被导出",
   );
-  assert.ok(
-    src.includes("componentId: string"),
-    "应包含 componentId 字段",
-  );
-  assert.ok(
-    src.includes("componentType: string"),
-    "应包含 componentType 字段",
-  );
-  assert.ok(
-    src.includes("label?: string"),
-    "应包含可选 label 字段",
-  );
+  assert.ok(src.includes("componentId: string"), "应包含 componentId 字段");
+  assert.ok(src.includes("componentType: string"), "应包含 componentType 字段");
+  assert.ok(src.includes("label?: string"), "应包含可选 label 字段");
   assert.ok(
     src.includes("interactionMode?: string"),
     "应包含可选 interactionMode 字段",
@@ -295,19 +284,18 @@ test("问题5: 所有输入组件的 setLocalValue 调用都传递元数据", ()
       fnCode.includes(`componentType: "${type}"`),
       `${name} 应传递 componentType: "${type}"`,
     );
-    assert.ok(
-      fnCode.includes("componentId:"),
-      `${name} 应传递 componentId`,
-    );
+    assert.ok(fnCode.includes("componentId:"), `${name} 应传递 componentId`);
   }
 });
 
 test("问题5: handleSetLocalValue 接收并记录元数据到日志", () => {
   const src = readSrc("app/page.tsx");
 
-  // 函数签名应接受 meta 参数
+  // 函数签名应接受 meta 参数 (允许跨行格式)
   assert.ok(
-    src.includes("meta?: { componentId?: string; componentType?: string; label?: string; interactionMode?: string }"),
+    /meta\?:\s*\{\s*componentId\?:\s*string;\s*componentType\?:\s*string;\s*label\?:\s*string;\s*interactionMode\?:\s*string/.test(
+      src,
+    ),
     "handleSetLocalValue 应接受 meta 参数",
   );
   // payload 应包含 component 元数据
@@ -348,10 +336,7 @@ test("问题6: page.tsx 客户端检测 fallback 并警告", () => {
     src.includes("response.diagnostics?.simulatedData"),
     "客户端应检测 simulatedData",
   );
-  assert.ok(
-    src.includes("mock fallback"),
-    "客户端应对 fallback 发出警告",
-  );
+  assert.ok(src.includes("mock fallback"), "客户端应对 fallback 发出警告");
 });
 
 // ─── 问题 7: Refine 前端失败路径只写 console，不写 runtime log ──────────────
@@ -438,9 +423,9 @@ test("回归: setLocalValue 扩展是向后兼容的", () => {
     src.includes("meta?: ComponentInteractionMeta"),
     "meta 参数应为可选",
   );
-  // RendererProps 中 setLocalValue 的 meta 也应可选
+  // RendererProps 中 setLocalValue 的 meta 也应可选 (允许跨行格式)
   assert.ok(
-    src.includes("value: unknown, meta?: ComponentInteractionMeta"),
+    /value:\s*unknown,\s*meta\?:\s*ComponentInteractionMeta/.test(src),
     "RendererProps.setLocalValue 的 meta 应可选",
   );
 });
@@ -461,9 +446,6 @@ test("回归: 所有现有事件类型未被删除或重命名", () => {
   for (const eventType of requiredEventTypes) {
     const inAiUi = aiUiSrc.includes(`"${eventType}"`);
     const inRuntime = runtimeSrc.includes(`"${eventType}"`);
-    assert.ok(
-      inAiUi || inRuntime,
-      `事件类型 ${eventType} 应仍然存在`,
-    );
+    assert.ok(inAiUi || inRuntime, `事件类型 ${eventType} 应仍然存在`);
   }
 });

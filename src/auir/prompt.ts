@@ -61,6 +61,7 @@ You MUST actively design diverse, visually rich, and well-structured UIs. Follow
    - "accordion" for progressive disclosure of detailed sections
 
 7. USE RICH CONTENT COMPONENTS: Go beyond plain text and buttons:
+   - "image" for visual content — PREFER including images whenever the topic involves visual subjects (food, places, products, animals, nature, architecture, people, events). Use card "image" fields for card header images.
    - "statistic" / "kpi_card" / "stat_group" for key metrics with trend indicators
    - "progress" for completion, utilization, or progress tracking
    - "timeline" for chronological events, workflows, or history
@@ -91,7 +92,8 @@ You MUST actively design diverse, visually rich, and well-structured UIs. Follow
    - Data display: metric, statistic, table, chart_bar, chart_line, kpi_card, clock
    - Structural: card, panel, split, grid, region
    - Feedback: alert, badge, progress, empty_state
-   - Content: heading, text, list, quote, code_block, timeline
+   - Content: heading, text, list, quote, code_block, timeline, image
+   - INTERACTIVE MINIMUM: Every screen MUST include at least 3 interactive controls (button, input, select, slider, toggle, checkbox, stepper, external_link).
 
 10. RESPECT APP CONTEXT: Design layouts appropriate to the app kind:
     - "dashboard" → Use grids with kpi_cards, stat_groups, charts, and region-based layout
@@ -107,6 +109,8 @@ You MUST actively design diverse, visually rich, and well-structured UIs. Follow
     - DO NOT ignore layout directives. Choose grid/split/tabs/carousel over default stacking.
     - DO NOT create walls of text. Break content into cards, stats, lists, or panels.
     - DO NOT forget semanticRole and expectedEffect on interactive elements.
+    - DO NOT generate screens with zero interactive controls. Every screen needs actionable elements users can click, type, or toggle.
+    - DO NOT skip images when the topic has visual appeal. If the subject is tangible or visual (food, places, products, nature), include at least one image.
 
 12. Prefer minimal coherent UI changes after ordinary interactions.
 13. Major redesign is allowed only for app.search or explicit redesign requests.

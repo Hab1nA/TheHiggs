@@ -3,7 +3,7 @@
 // ============================================================
 
 import { beautifyLayout } from "@/auir/beautify";
-import { createFallbackResponse } from "@/auir/fallback";
+import { createFallbackResponse, createLauncherState } from "@/auir/fallback";
 import type { AUIRRequest, AUIRResponse } from "@/auir/types";
 import { validateResponse } from "@/auir/validate";
 import { appendRuntimeLog } from "@/runtime/logging/server";
@@ -36,6 +36,36 @@ export async function runAIRuntime(
       payload: { mode: "mock" },
     });
     return mockGenerateNextAUIRState(request);
+  }
+
+  // Short-circuit deterministic runtime commands — no AI call needed
+  if (request.event.type === "runtime.command") {
+    if (
+      request.event.command === "restart" ||
+      request.event.command === "back_to_launcher"
+    ) {
+      console.log(
+        `[AI Runtime] Short-circuit: ${request.event.command} → launcher state`,
+      );
+      await appendRuntimeLog({
+        type: "runtime.command.short_circuit",
+        pageLogId: pageLogContext?.pageLogId,
+        sessionId: request.session.sessionId,
+        turn: request.session.turn,
+        stage: "runtime",
+        status: "success",
+        payload: { command: request.event.command },
+      });
+      return {
+        protocol: "AUIR",
+        version: "0.3",
+        next: createLauncherState(),
+        diagnostics: {
+          eventInterpretedAs: `User requested ${request.event.command}`,
+          stateTransition: "any -> launcher",
+        },
+      };
+    }
   }
 
   console.log("[AI Runtime] Using Vercel AI SDK mode");

@@ -3,7 +3,7 @@
 // AUIR Zod Schema — 运行时校验 + AI 模型输出合同
 // ============================================================
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.auirResponseSchema = exports.auirRequestSchema = exports.auirConstraintsSchema = exports.auirStateSchema = exports.auirDiagnosticsSchema = exports.auirToolRequestSchema = exports.auirToolDescriptorSchema = exports.auirMemoryPatchSchema = exports.userMemoryCandidateSchema = exports.jsonPatchOperationSchema = exports.auirMemorySchema = exports.retrievedUserMemorySchema = exports.auirAppDescriptorSchema = exports.auirSessionSchema = exports.auirEventSchema = exports.timerRefreshEventSchema = exports.runtimeCommandEventSchema = exports.modalCloseEventSchema = exports.tabChangeEventSchema = exports.formSubmitEventSchema = exports.componentCommitEventSchema = exports.componentClickEventSchema = exports.appSearchEventSchema = exports.clientSnapshotSchema = exports.localUIStateSchema = exports.uiNodeSchema = exports.imageBlueprintSchema = exports.imageSlotPlanItemSchema = void 0;
+exports.auirResponseSchema = exports.auirRequestSchema = exports.auirConstraintsSchema = exports.auirStateSchema = exports.auirDiagnosticsSchema = exports.auirToolRequestSchema = exports.auirToolDescriptorSchema = exports.auirMemoryPatchSchema = exports.userMemoryCandidateSchema = exports.jsonPatchOperationSchema = exports.auirMemorySchema = exports.retrievedUserMemorySchema = exports.auirAppDescriptorSchema = exports.auirSessionSchema = exports.auirEventSchema = exports.timerRefreshEventSchema = exports.runtimeCommandEventSchema = exports.modalCloseEventSchema = exports.tabChangeEventSchema = exports.formSubmitEventSchema = exports.componentCommitEventSchema = exports.componentClickEventSchema = exports.appSearchEventSchema = exports.clientSnapshotSchema = exports.localUIStateSchema = exports.uiNodeSchema = exports.externalLinkNodeSchema = exports.imageBlueprintSchema = exports.imageSlotPlanItemSchema = void 0;
 const zod_1 = require("zod");
 // -----------------------------------------------------------
 // 基础枚举
@@ -354,6 +354,13 @@ const stepperNodeSchema = zod_1.z.object({
     unit: zod_1.z.string().optional(),
     interaction: interactionPolicySchema.optional(),
 });
+exports.externalLinkNodeSchema = zod_1.z.object({
+    ...baseNodeExtras,
+    type: zod_1.z.literal("external_link"),
+    label: zod_1.z.string(),
+    url: zod_1.z.string(),
+    variant: zod_1.z.enum(["primary", "secondary", "ghost", "danger"]).optional(),
+});
 const localValueDisplayNodeSchema = zod_1.z.object({
     ...baseNodeExtras,
     type: zod_1.z.literal("local_value_display"),
@@ -683,6 +690,7 @@ exports.uiNodeSchema = zod_1.z.discriminatedUnion("type", [
     checkboxNodeSchema,
     sliderNodeSchema,
     stepperNodeSchema,
+    exports.externalLinkNodeSchema,
     localValueDisplayNodeSchema,
     tableNodeSchema,
     metricNodeSchema,

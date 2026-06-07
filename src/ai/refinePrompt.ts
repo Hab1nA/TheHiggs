@@ -130,10 +130,12 @@ CRITICAL RULES for refinement:
 3. SUGGEST rich components: recommend specific AUIR components from the list
    above that would make the UI feel complete and professional.
 4. DESCRIBE interactions: what happens when users click, type, or toggle things.
-5. INCLUDE data considerations: what data should be displayed, what units,
+   MAXIMIZE INTERACTION: include at least 3-4 interactive modules (with buttons, inputs, sliders, toggles, selects). Interactive controls make the UI a living application, not a static page.
+5. PRIORITIZE IMAGERY: for any topic involving visual subjects (food, places, products, animals, nature, architecture, people, events), plan image search queries for at least 2-3 modules.
+6. INCLUDE data considerations: what data should be displayed, what units,
    what precision, what edge cases to handle.
-6. THINK about visual hierarchy: headings, spacing, color tones, emphasis levels.
-7. WRITE in the same language as the user's query.
+7. THINK about visual hierarchy: headings, spacing, color tones, emphasis levels.
+8. WRITE in the same language as the user's query.
 
 UI MODULE PLANNING (CRITICAL):
 You MUST decompose the user's request into 3-10 UI modules (uiModules).
