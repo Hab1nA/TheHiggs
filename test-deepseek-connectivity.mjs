@@ -67,7 +67,9 @@ try {
   console.log("\n✅ API 连通性测试成功!");
   console.log(`   响应时间: ${elapsed}ms`);
   console.log(`   响应内容: ${text.trim()}`);
-  console.log(`   Token 用量: ${usage.promptTokens} (prompt) + ${usage.completionTokens} (completion) = ${usage.totalTokens} (total)`);
+  console.log(
+    `   Token 用量: ${usage.promptTokens} (prompt) + ${usage.completionTokens} (completion) = ${usage.totalTokens} (total)`,
+  );
 
   process.exit(0);
 } catch (error) {
@@ -79,24 +81,40 @@ try {
   console.error(`   错误信息: ${error.message}`);
 
   // 提供常见错误的诊断建议
-  if (error.message.includes("ECONNREFUSED") || error.message.includes("ENOTFOUND")) {
+  if (
+    error.message.includes("ECONNREFUSED") ||
+    error.message.includes("ENOTFOUND")
+  ) {
     console.log("\n💡 诊断: 无法连接到 API 服务器");
     console.log("   - 检查网络连接");
     console.log("   - 检查 OPENAI_BASE_URL 是否正确");
     console.log("   - 如果使用代理，请确保代理配置正确");
-  } else if (error.message.includes("401") || error.message.includes("Unauthorized")) {
+  } else if (
+    error.message.includes("401") ||
+    error.message.includes("Unauthorized")
+  ) {
     console.log("\n💡 诊断: API Key 无效或已过期");
     console.log("   - 检查 OPENAI_API_KEY 是否正确");
     console.log("   - 确认 API Key 是否有余额");
-  } else if (error.message.includes("429") || error.message.includes("Too Many Requests")) {
+  } else if (
+    error.message.includes("429") ||
+    error.message.includes("Too Many Requests")
+  ) {
     console.log("\n💡 诊断: 请求频率过高");
     console.log("   - 等待一段时间后重试");
     console.log("   - 检查 API 配额是否用尽");
-  } else if (error.message.includes("500") || error.message.includes("502") || error.message.includes("503")) {
+  } else if (
+    error.message.includes("500") ||
+    error.message.includes("502") ||
+    error.message.includes("503")
+  ) {
     console.log("\n💡 诊断: API 服务器错误");
     console.log("   - DeepSeek 服务可能暂时不可用");
     console.log("   - 稍后重试或查看 DeepSeek 状态页面");
-  } else if (error.message.includes("timeout") || error.message.includes("ETIMEDOUT")) {
+  } else if (
+    error.message.includes("timeout") ||
+    error.message.includes("ETIMEDOUT")
+  ) {
     console.log("\n💡 诊断: 请求超时");
     console.log("   - 网络连接可能不稳定");
     console.log("   - 尝试增加超时时间或检查网络");
