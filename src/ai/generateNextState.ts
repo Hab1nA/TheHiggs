@@ -12,7 +12,7 @@
 
 import { buildAUIRSystemPrompt } from "@/auir/prompt";
 import {
-  createAIResponseSchema,
+  auirResponseSchema,
   imageBlueprintSchema,
   type ImageBlueprint,
 } from "@/auir/schema";
@@ -33,37 +33,6 @@ import { executeTool } from "./tools";
 // -----------------------------------------------------------
 // Phase 1: 工具决策 Schema + 轻量级调用
 // -----------------------------------------------------------
-
-/**
- * 深度限制的 AI Response schema — 仅用于 validateResponse 详细校验。
- * ⚠️ 不用于 generateObject！该 schema 经 AI SDK 转 JSON Schema 后膨胀到 ~88KB，
- *    嵌入 system prompt 后变为 ~209MB，导致 DeepSeek API 返回 ECONNRESET。
- */
-const aiResponseSchema = createAIResponseSchema(3);
-
-/**
- * 最小化 schema — 仅用于 generateObject 调用。
- * 只验证顶层结构，组件细节交由 validateResponse 校验。
- * JSON Schema 约 ~500 chars（vs 完整 schema 的 88KB），避免请求体膨胀。
- */
-const minimalResponseSchema = z
-  .object({
-    protocol: z.string(),
-    version: z.string(),
-    next: z
-      .object({
-        app: z
-          .object({ id: z.string(), title: z.string(), kind: z.string() })
-          .passthrough(),
-        memory: z.record(z.string(), z.unknown()),
-        ui: z.record(z.string(), z.unknown()),
-      })
-      .passthrough(),
-    memoryPatch: z.unknown().optional(),
-    toolRequests: z.unknown().optional(),
-    diagnostics: z.unknown().optional(),
-  })
-  .passthrough();
 
 /** 工具决策结果类型 */
 interface ToolDecision {
@@ -1180,22 +1149,6 @@ export async function generateNextAUIRState(
 // 带多级错误恢复的 generateObject 调用
 // -----------------------------------------------------------
 
-/** 检测是否为连接级错误（ECONNRESET / ETIMEDOUT 等），此类错误重试无意义 */
-function isConnectionError(err: unknown): boolean {
-  const msg =
-    err instanceof Error
-      ? err.message.toLowerCase()
-      : String(err).toLowerCase();
-  return (
-    msg.includes("econnreset") ||
-    msg.includes("etimedout") ||
-    msg.includes("econnrefused") ||
-    msg.includes("socket hang up") ||
-    msg.includes("connect econnreset") ||
-    msg.includes("cannot connect to api")
-  );
-}
-
 /** 带多级降级的 UI 生成 */
 async function generateWithRetry(
   model: ReturnType<typeof getModel>,
@@ -1205,7 +1158,7 @@ async function generateWithRetry(
   request?: AUIRRequest,
 ): Promise<AUIRResponse> {
   const pageLogContext = request ? getPageLogContext(request) : undefined;
-  // 尝试 1: 正常生成（maxTokens: 16384 — DeepSeek 实际上限）
+  // 尝试 1: 正常生成（maxTokens: 12000）
   let attemptStartedAt = Date.now();
   try {
     console.log(
@@ -1215,7 +1168,7 @@ async function generateWithRetry(
       () =>
         generateObject({
           model,
-          schema: minimalResponseSchema,
+          schema: auirResponseSchema,
           system: systemPrompt,
           prompt: JSON.stringify(promptObj),
           mode: "json",
@@ -1266,143 +1219,137 @@ async function generateWithRetry(
         error: err instanceof Error ? err.message : String(err),
       },
     });
-    // 连接级错误（ECONNRESET 等）重试无意义，直接跳到降级
-    if (isConnectionError(err)) {
-      console.error(
-        "[generateWithRetry] Connection error detected, skipping retries.",
-      );
-    } else {
-      // 尝试 2: 截断 system prompt + 降低 temperature
-      attemptStartedAt = Date.now();
-      try {
-        console.log(
-          "[generateWithRetry] Attempt 2: truncated system prompt (32000 tokens)",
-        );
-        const shortSystem =
-          systemPrompt.length > 16000
-            ? systemPrompt.slice(0, 16000) +
-              "\n\n[System prompt truncated for reliability]"
-            : systemPrompt;
+  }
 
-        const response = await validateOrRetry(
-          () =>
-            generateObject({
-              model,
-              schema: minimalResponseSchema,
-              system: shortSystem,
-              prompt: JSON.stringify(promptObj),
-              mode: "json",
-              temperature: 0.3,
-              maxTokens: 32000,
-            }).then((r) => r.object),
-          constraints,
-        );
-        await appendRuntimeLog({
-          type: "ai.exchange",
-          pageLogId: pageLogContext?.pageLogId,
-          sessionId: request?.session.sessionId,
-          turn: request?.session.turn,
-          stage: "ui_generation",
-          status: "success",
-          durationMs: Date.now() - attemptStartedAt,
-          payload: {
-            attempt: 2,
-            request: {
-              system: shortSystem,
-              prompt: promptObj,
-              options: { mode: "json", temperature: 0.3, maxTokens: 32000 },
-            },
-            response,
-          },
-        });
-        return response;
-      } catch (err2) {
-        console.warn(
-          "[generateWithRetry] Attempt 2 failed:",
-          (err2 as Error).message?.slice(0, 100),
-        );
-        await appendRuntimeLog({
-          type: "ai.exchange",
-          pageLogId: pageLogContext?.pageLogId,
-          sessionId: request?.session.sessionId,
-          turn: request?.session.turn,
-          stage: "ui_generation",
-          status: "failure",
-          durationMs: Date.now() - attemptStartedAt,
-          payload: {
-            attempt: 2,
-            request: {
-              prompt: promptObj,
-              options: { mode: "json", temperature: 0.3, maxTokens: 32000 },
-            },
-            error: err2 instanceof Error ? err2.message : String(err2),
-          },
-        });
-      }
+  // 尝试 2: 截断 system prompt + 降低 temperature
+  attemptStartedAt = Date.now();
+  try {
+    console.log(
+      "[generateWithRetry] Attempt 2: truncated system prompt (32000 tokens)",
+    );
+    const shortSystem =
+      systemPrompt.length > 16000
+        ? systemPrompt.slice(0, 16000) +
+          "\n\n[System prompt truncated for reliability]"
+        : systemPrompt;
 
-      // 尝试 3: 最小化 prompt，不含工具结果
-      attemptStartedAt = Date.now();
-      try {
-        console.log("[generateWithRetry] Attempt 3: minimal prompt (no tools)");
-        const minimalSystem = buildAUIRSystemPrompt();
-        const minimalPrompt = { ...promptObj };
-        delete minimalPrompt.toolResultsContext;
-        minimalPrompt.instruction =
-          "You must respond with a single valid json object conforming to the AUIRResponse schema. " +
-          "Output ONLY the json object. Generate a complete UI based on the event.";
+    const response = await validateOrRetry(
+      () =>
+        generateObject({
+          model,
+          schema: auirResponseSchema,
+          system: shortSystem,
+          prompt: JSON.stringify(promptObj),
+          mode: "json",
+          temperature: 0.3,
+          maxTokens: 32000,
+        }).then((r) => r.object),
+      constraints,
+    );
+    await appendRuntimeLog({
+      type: "ai.exchange",
+      pageLogId: pageLogContext?.pageLogId,
+      sessionId: request?.session.sessionId,
+      turn: request?.session.turn,
+      stage: "ui_generation",
+      status: "success",
+      durationMs: Date.now() - attemptStartedAt,
+      payload: {
+        attempt: 2,
+        request: {
+          system: shortSystem,
+          prompt: promptObj,
+          options: { mode: "json", temperature: 0.3, maxTokens: 32000 },
+        },
+        response,
+      },
+    });
+    return response;
+  } catch (err) {
+    console.warn(
+      "[generateWithRetry] Attempt 2 failed:",
+      (err as Error).message?.slice(0, 100),
+    );
+    await appendRuntimeLog({
+      type: "ai.exchange",
+      pageLogId: pageLogContext?.pageLogId,
+      sessionId: request?.session.sessionId,
+      turn: request?.session.turn,
+      stage: "ui_generation",
+      status: "failure",
+      durationMs: Date.now() - attemptStartedAt,
+      payload: {
+        attempt: 2,
+        request: {
+          prompt: promptObj,
+          options: { mode: "json", temperature: 0.3, maxTokens: 32000 },
+        },
+        error: err instanceof Error ? err.message : String(err),
+      },
+    });
+  }
 
-        const response = await validateOrRetry(
-          () =>
-            generateObject({
-              model,
-              schema: minimalResponseSchema,
-              system: minimalSystem,
-              prompt: JSON.stringify(minimalPrompt),
-              mode: "json",
-              temperature: 0.3,
-              maxTokens: 32000,
-            }).then((r) => r.object),
-          constraints,
-        );
-        await appendRuntimeLog({
-          type: "ai.exchange",
-          pageLogId: pageLogContext?.pageLogId,
-          sessionId: request?.session.sessionId,
-          turn: request?.session.turn,
-          stage: "ui_generation",
-          status: "success",
-          durationMs: Date.now() - attemptStartedAt,
-          payload: {
-            attempt: 3,
-            request: {
-              system: minimalSystem,
-              prompt: minimalPrompt,
-              options: { mode: "json", temperature: 0.3, maxTokens: 32000 },
-            },
-            response,
-          },
-        });
-        return response;
-      } catch (err3) {
-        console.error(
-          "[generateWithRetry] All attempts failed:",
-          (err3 as Error).message?.slice(0, 200),
-        );
-        await appendRuntimeLog({
-          type: "ai.exchange",
-          pageLogId: pageLogContext?.pageLogId,
-          sessionId: request?.session.sessionId,
-          turn: request?.session.turn,
-          stage: "ui_generation",
-          status: "failure",
-          durationMs: Date.now() - attemptStartedAt,
-          payload: {
-            attempt: 3,
-            error: err3 instanceof Error ? err3.message : String(err3),
-          },
-        });
-      }
-    }
+  // 尝试 3: 最小化 prompt，不含工具结果
+  attemptStartedAt = Date.now();
+  try {
+    console.log("[generateWithRetry] Attempt 3: minimal prompt (no tools)");
+    const minimalSystem = buildAUIRSystemPrompt();
+    const minimalPrompt = { ...promptObj };
+    delete minimalPrompt.toolResultsContext;
+    minimalPrompt.instruction =
+      "You must respond with a single valid json object conforming to the AUIRResponse schema. " +
+      "Output ONLY the json object. Generate a complete UI based on the event.";
+
+    const response = await validateOrRetry(
+      () =>
+        generateObject({
+          model,
+          schema: auirResponseSchema,
+          system: minimalSystem,
+          prompt: JSON.stringify(minimalPrompt),
+          mode: "json",
+          temperature: 0.3,
+          maxTokens: 32000,
+        }).then((r) => r.object),
+      constraints,
+    );
+    await appendRuntimeLog({
+      type: "ai.exchange",
+      pageLogId: pageLogContext?.pageLogId,
+      sessionId: request?.session.sessionId,
+      turn: request?.session.turn,
+      stage: "ui_generation",
+      status: "success",
+      durationMs: Date.now() - attemptStartedAt,
+      payload: {
+        attempt: 3,
+        request: {
+          system: minimalSystem,
+          prompt: minimalPrompt,
+          options: { mode: "json", temperature: 0.3, maxTokens: 32000 },
+        },
+        response,
+      },
+    });
+    return response;
+  } catch (err) {
+    console.error(
+      "[generateWithRetry] All attempts failed:",
+      (err as Error).message?.slice(0, 200),
+    );
+    await appendRuntimeLog({
+      type: "ai.exchange",
+      pageLogId: pageLogContext?.pageLogId,
+      sessionId: request?.session.sessionId,
+      turn: request?.session.turn,
+      stage: "ui_generation",
+      status: "failure",
+      durationMs: Date.now() - attemptStartedAt,
+      payload: {
+        attempt: 3,
+        error: err instanceof Error ? err.message : String(err),
+      },
+    });
   }
 
   // 最终降级: 返回基础 UI

@@ -2,10 +2,10 @@ import { appendFile, mkdir, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { sanitizeForRuntimeLog } from "./sanitize";
 import type {
-  PageLogContext,
-  RuntimeLogAppendInput,
-  RuntimeLogEvent,
-  RuntimeLogFileRecord,
+    PageLogContext,
+    RuntimeLogAppendInput,
+    RuntimeLogEvent,
+    RuntimeLogFileRecord,
 } from "./types";
 
 const LOG_DIR = join(process.cwd(), "runtime-logs");
@@ -37,32 +37,8 @@ export async function appendRuntimeLog(
   try {
     const filePath = await findLogFile(event.pageLogId);
     if (!filePath) {
-      // 竞态修复：文件尚未创建时自动创建，而非丢弃事件
-      console.warn(
-        `[runtime-log] No page log file found for pageLogId=${event.pageLogId}; auto-creating...`,
-      );
-      const created = await getOrCreateLogFile({
-        pageLogId: event.pageLogId,
-        sessionId: event.sessionId,
-        pageStartedAt: event.timestamp ?? new Date().toISOString(),
-      });
-      // 重新查找（getOrCreateLogFile 已写入 cache）
-      const createdPath = await findLogFile(event.pageLogId);
-      if (!createdPath) {
-        console.warn(
-          `[runtime-log] Auto-create failed for pageLogId=${event.pageLogId}; event type=${event.type} dropped`,
-        );
-        return false;
-      }
-      // 继续写入事件到新创建的文件
-      const normalized: RuntimeLogEvent = {
-        ...event,
-        id: createRuntimeLogEventId(),
-        timestamp: event.timestamp ?? new Date().toISOString(),
-        payload: sanitizeForRuntimeLog(event.payload),
-      };
-      await appendFile(createdPath, `${JSON.stringify(normalized)}\n`, "utf8");
-      return true;
+      console.warn(`[runtime-log] No page log file found for pageLogId=${event.pageLogId}; event type=${event.type} dropped`);
+      return false;
     }
 
     const normalized: RuntimeLogEvent = {
