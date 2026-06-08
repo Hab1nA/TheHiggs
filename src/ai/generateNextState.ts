@@ -1094,7 +1094,6 @@ export async function generateNextAUIRState(
   // Build minimal prompt（不发送完整 previous state）
   const promptObj = buildMinimalRequestSummary(request);
   promptObj.instruction =
-    "You must respond with a single valid JSON object conforming to the AUIRResponse schema. " +
     "Treat clientSnapshot.localState.values as the latest truth for user inputs.";
 
   if (refineResult) {
