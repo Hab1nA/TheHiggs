@@ -277,6 +277,12 @@ const localActionSchema = zod_1.z.discriminatedUnion("type", [
         targetBinding: zod_1.z.string(),
         text: zod_1.z.string(),
     }),
+    zod_1.z.object({
+        type: zod_1.z.literal("set_active_tab"),
+        tabsId: zod_1.z.string(),
+        nextTab: zod_1.z.string(),
+        notifyAI: zod_1.z.boolean().optional(),
+    }),
 ]);
 const buttonNodeSchema = zod_1.z.object({
     ...baseNodeExtras,
