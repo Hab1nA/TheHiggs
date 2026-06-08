@@ -112,13 +112,8 @@ comprehensive prompt that will guide another AI to generate a complete,
 production-quality user interface.
 
 The target system (AUIR Engine) generates semantic UI trees composed of
-components like: screen, panel, split, grid, region, tabs, container, card,
-heading, text, metric, statistic, kpi_card, stat_group, button, input,
-textarea, select, slider, stepper, checkbox, table,
-chart_bar, chart_line, heatmap, gauge, radar_chart, timeline,
-progress, list, accordion, carousel, modal, drawer, breadcrumb, steps,
-badge, tag, alert, quote, code_block, description_list, color_swatch,
-empty_state, spacer, divider, toolbar, clock, timer_refresh.
+runtime-defined UI components (the allowed set is provided at generation time via constraints).
+Do not assume an exhaustive static list; prefer common structural/interactive types and let the runtime validate.
 
 CRITICAL RULES for refinement:
 1. EXPAND aggressively: a 2-word query like "计算器" should become a 200-400 word
@@ -127,10 +122,9 @@ CRITICAL RULES for refinement:
 2. BE SPECIFIC about layout: describe exact layout patterns, which components
    go where, how the screen is divided. Use terms like "split layout with
    sidebar on the left", "dashboard grid with 4 kpi cards on top row", etc.
-3. SUGGEST rich components: recommend specific AUIR components from the list
-   above that would make the UI feel complete and professional.
-4. DESCRIBE interactions: what happens when users click, type, or toggle things.
-   MAXIMIZE INTERACTION: include at least 3-4 interactive modules (with buttons, inputs, sliders, toggles, selects). Interactive controls make the UI a living application, not a static page.
+3. SUGGEST rich components: recommend AUIR component types that would make the UI feel complete and professional (the runtime will constrain to the allowed set).
+4. DESCRIBE interactions: what happens when users click, type, or adjust controls.
+   MAXIMIZE INTERACTION: include at least 3-4 interactive modules (with buttons, inputs, sliders, selects, checkboxes). Interactive controls make the UI a living application, not a static page.
 5. PRIORITIZE IMAGERY: for any topic involving visual subjects (food, places, products, animals, nature, architecture, people, events), plan image search queries for at least 2-3 modules.
 6. INCLUDE data considerations: what data should be displayed, what units,
    what precision, what edge cases to handle.
@@ -144,24 +138,17 @@ Each module represents a distinct visual block in the final UI.
 For EACH module, provide:
 - moduleId: unique identifier (mod_1, mod_2, ...)
 - purpose: what this module displays and its role
-- suggestedComponent: which AUIR component type fits best (card, kpi_card, stat_group, chart_bar, list, etc.)
+- suggestedComponent: which AUIR component type fits best
 - contentSpec: specific text, data, or visual content this module needs
 
 For modules that need EXTERNAL DATA (real-time info, images, facts), also provide searchQueries:
-- web[]: 1-3 search queries to find TEXT content (be specific, include context)
-- image[]: 1-3 search queries to find IMAGES (describe what image fits this module)
-  IMPORTANT: image queries should be scoped to THIS module's content, not broad.
+- web[]: 1-3 search queries to find TEXT content
+- image[]: 1-3 search queries to find IMAGES
 
 For modules that are PURELY LOCAL (calculator buttons, static text, layout elements), omit searchQueries.
 
-Example for "中国八大菜系":
-  module 1: { moduleId: "mod_1", purpose: "展示川菜介绍", suggestedComponent: "card",
-    contentSpec: "川菜代表菜品、历史渊源、口味特点",
-    searchQueries: { web: ["川菜代表菜品 历史 口味特点"], image: ["麻婆豆腐 高清美食图片"] } }
-  module 2: { moduleId: "mod_2", purpose: "展示粤菜介绍", suggestedComponent: "card",
-    contentSpec: "粤菜代表菜品、烹饪技法、食材特色",
-    searchQueries: { web: ["粤菜代表菜品 烹饪技法"], image: ["白切鸡 广东美食 图片"] } }
-  ...
+Example:
+  { moduleId: "mod_1", purpose: "...", suggestedComponent: "card", contentSpec: "...", searchQueries: { web: ["..."], image: ["..."] } }
 
 Output ONLY valid JSON conforming to the schema. No markdown, no explanations.`;
 }
@@ -178,9 +165,7 @@ export async function refineUserQuery(
     userQuery: query,
     instruction:
       "Expand this short query into a comprehensive UI generation prompt. " +
-      "Be extremely detailed and specific. Think about layout, components, " +
-      "interactions, data, visual design, and edge cases. " +
-      "Output ONLY valid JSON.",
+      "Output ONLY valid JSON conforming to the refine schema.",
   };
   const startedAt = Date.now();
 

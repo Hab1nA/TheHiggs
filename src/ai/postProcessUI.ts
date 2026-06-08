@@ -188,7 +188,19 @@ async function runReviewAI(
 // 共享组件参考（三个 prompt 共用，避免重复）
 // ============================================================
 
-const COMPONENT_REFERENCE = `=== COMPONENT REFERENCE (key types only) ===
+const COMPONENT_REFERENCE = `=== COMPONENT TYPES (compact reference) ===
+Layout: screen, container, grid, split, region, panel, tabs, toolbar, spacer, divider.
+Content: heading, text, image, metric, alert, code_block, table.
+Interactive: button, text_input, number_input, textarea, select, checkbox, slider, stepper, external_link.
+Extended: card, statistic, kpi_card, stat_group, progress, timeline, list, accordion, carousel, breadcrumb, badge, tag, quote, description_list, empty_state, steps, gauge, heatmap, radar_chart, color_swatch, clock, timer_refresh.
+
+Rules:
+- Use structural nodes (container/grid/split/region/tabs/toolbar/panel/card) to fix layout.
+- Do NOT add functional nodes (button/text_input/select/checkbox/slider/stepper) unless required by timer_refresh rules.
+- Do NOT change id/type/text content/metric/alert messages.
+`;
+
+const FULL_COMPONENT_REFERENCE = `=== COMPONENT REFERENCE (key types only) ===
 
 LAYOUT NODES:
   screen { title?, layoutMode?, gap?, children[] }
@@ -468,7 +480,7 @@ function buildFunctionalitySystemPrompt(): string {
 Your role is to review a UI tree and ensure every interactive element has correct,
 complete functional properties. You do NOT adjust layout — only fix functional attributes.
 
-${COMPONENT_REFERENCE}
+${FULL_COMPONENT_REFERENCE}
 
 === YOUR MISSION: FUNCTIONALITY AUDIT ===
 

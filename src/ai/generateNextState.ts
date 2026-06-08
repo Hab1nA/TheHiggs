@@ -1099,6 +1099,7 @@ export async function generateNextAUIRState(
     "Treat clientSnapshot.localState.values as the latest truth for user inputs.";
 
   if (refineResult) {
+    // Keep only structured metadata in user prompt; refinedPrompt already lives in system supplement.
     promptObj.refinedSpec = {
       appTitle: refineResult.appTitle,
       appKind: refineResult.appKind,
@@ -1106,7 +1107,6 @@ export async function generateNextAUIRState(
       keyFeatures: refineResult.keyFeatures,
       suggestedLayout: refineResult.suggestedLayout,
       suggestedComponents: refineResult.suggestedComponents,
-      refinedPrompt: refineResult.refinedPrompt,
     };
   }
 

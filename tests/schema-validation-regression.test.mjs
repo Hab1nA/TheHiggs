@@ -262,23 +262,13 @@ test("refinePrompt.ts does not reference unsupported components (toggle, radio_g
   const refinePath = join(root, "src/ai/refinePrompt.ts");
   const content = readFileSync(refinePath, "utf-8");
 
-  // Extract the component list (between "components like:" and the period)
-  const listMatch = content.match(/components like:([\s\S]*?)\./);
-  assert.ok(listMatch, "Could not find component list in refinePrompt.ts");
-  const componentList = listMatch[1];
-
-  assert.ok(
-    !componentList.includes("toggle"),
-    "Component list still includes 'toggle'",
-  );
-  assert.ok(
-    !componentList.includes("radio_group"),
-    "Component list still includes 'radio_group'",
-  );
-  assert.ok(
-    !componentList.includes("chart_pie"),
-    "Component list still includes 'chart_pie'",
-  );
+  // Component list may be omitted to avoid prompt bloat; ensure unsupported types are not referenced anywhere.
+  for (const unsupported of ["toggle", "radio_group", "chart_pie"]) {
+    assert.ok(
+      !content.includes(unsupported),
+      `refinePrompt.ts should not reference unsupported component '${unsupported}'`,
+    );
+  }
 });
 
 test("postProcessUI.ts does not have 'toggle' as a component definition", () => {

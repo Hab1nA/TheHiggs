@@ -375,20 +375,24 @@ test("runtime.ts validates final UI against AUIR schema", () => {
 // 共享组件参考验证
 // ============================================================
 
-test("COMPONENT_REFERENCE constant is shared across prompts", () => {
+test("Postprocess prompts use shared constants (minimal + full)", () => {
   const src = readSrc("src/ai/postProcessUI.ts");
 
   assert.ok(
     src.includes("const COMPONENT_REFERENCE = `"),
-    "Should define shared COMPONENT_REFERENCE constant",
+    "Should define shared COMPONENT_REFERENCE constant (minimal subset for prompts)",
+  );
+  assert.ok(
+    src.includes("const FULL_COMPONENT_REFERENCE = `"),
+    "Should define full component reference for audits",
   );
   assert.ok(
     src.includes("OUTPUT_FORMAT_INSTRUCTIONS"),
     "Should define shared output format instructions",
   );
 
-  // 验证 COMPONENT_REFERENCE 包含所有主要节点类型
-  const nodeTypes = [
+  // Minimal reference should include structural/interactive core types
+  const minimalTypes = [
     "screen",
     "container",
     "grid",
@@ -401,16 +405,30 @@ test("COMPONENT_REFERENCE constant is shared across prompts", () => {
     "select",
     "checkbox",
     "slider",
+    "timer_refresh",
+  ];
+  for (const nodeType of minimalTypes) {
+    assert.ok(
+      src.includes(`  ${nodeType}`),
+      `COMPONENT_REFERENCE should include ${nodeType}`,
+    );
+  }
+
+  // Full reference should include extended/audit-relevant types
+  const fullTypes = [
     "card",
     "kpi_card",
     "stat_group",
     "progress",
     "timer_refresh",
+    "alert",
+    "metric",
+    "image",
   ];
-  for (const nodeType of nodeTypes) {
+  for (const nodeType of fullTypes) {
     assert.ok(
       src.includes(`  ${nodeType} {`),
-      `COMPONENT_REFERENCE should include ${nodeType}`,
+      `FULL_COMPONENT_REFERENCE should include ${nodeType}`,
     );
   }
 });

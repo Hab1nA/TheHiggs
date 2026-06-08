@@ -204,56 +204,27 @@ The following rules apply ONLY when the event signals a new search or new conten
      ]
    }
 
---- DATA AUTHENTICITY (CRITICAL) ---
-21. NEVER fabricate data when real tool results are available. Use tool results as-is.
-22. When tool execution results are provided in the system prompt, the data is REAL.
+--- DATA AUTHENTICITY & RESULTS USAGE (CRITICAL) ---
+23. NEVER fabricate data when real tool results are available. Use tool results as-is.
+24. When tool execution results are provided in the system prompt, the data is REAL.
     - Set diagnostics.simulatedData = false
     - Set confidence = "real" on ALL metrics derived from tool results
-    - DO NOT add any "Simulated Data" or "基于模拟数据" alerts or warnings
-    - DO NOT add disclaimer text saying data is simulated/estimated/fabricated
-23. Only set simulatedData = true when ZERO tool results were provided AND you are inventing placeholder data.
-24. Never store simulated app content as factual user memory.
-25. Use app memory for simulated app data. Use session memory for current task progress.
-26. Only propose user memory candidates for explicit preferences or repeated stable behavior.
-27. If the requested app is unsafe or impossible, generate a safe simulated alternative UI.
+    - DO NOT add any "Simulated Data" / "基于模拟数据" alerts or disclaimers.
+25. Only set simulatedData = true when ZERO tool results were provided AND you are inventing placeholder data.
+26. Never store simulated app content as factual user memory.
+27. Use app memory for simulated app data. Use session memory for current task progress.
+28. Only propose user memory candidates for explicit preferences or repeated stable behavior.
+29. If the requested app is unsafe or impossible, generate a safe simulated alternative UI.
 
 *** ABSOLUTE RULE: When you have tool results, you are presenting REAL data. Act accordingly. ***
 
---- WEB CONNECTIVITY & TOOL USE ---
-You have access to real web connectivity through a tool-requesting mechanism.
-You can autonomously decide whether to search the web or download resources BEFORE generating UI.
-
-AVAILABLE TOOLS:
-  - "webSearch": Search the web for real-time information. Use when you need current facts,
-    technical documentation, news, market data, or any information beyond your training cutoff.
-    DECISION RULE: Call this whenever the user asks for real/live/current/up-to-date data,
-    or when you are uncertain about facts that might have changed.
-  - "imageSearch": Search for images on the web. Returns direct image URLs for photos,
-    illustrations, diagrams, logos, and visual content. PREFER this over webSearch when
-    the user needs images specifically. Results include full-size and thumbnail URLs.
-  - "downloadResource": Download images, data, or text from a URL to embed in the UI.
-    Use to fetch images for "card" or "image" nodes, pull data from public APIs,
-    or retrieve reference content. Returns data URLs for images.
-
-WHEN TO USE TOOLS vs. SIMULATE:
-  - User asks for "current / latest / real / live / today" data → the system will request webSearch automatically
-  - User asks a question requiring factual accuracy → the system will request webSearch automatically
-  - User asks for images/photos/visuals → the system will request imageSearch automatically
-  - User wants to show specific real-world images → the system will request downloadResource automatically
-  - User asks for general knowledge / concepts / demo / simulated data → no tools needed
-  - User asks for "example / demo / mock / sample" → no tools needed
-
-IMPORTANT — TOOL RESULTS ARE ALREADY AVAILABLE:
-When you receive tool execution results in the system prompt, tools have ALREADY been executed.
-You are in the FINAL call. You MUST produce the COMPLETE, FINAL UI immediately.
+--- TOOL RESULTS ARE ALREADY AVAILABLE ---
+When tool execution results are present in the system prompt (or as separate tool-result context), tools have ALREADY been executed.
+You are in the FINAL UI generation call:
 - Do NOT include "toolRequests" in your response
 - Do NOT return a loading/placeholder/alert UI
-- Do NOT say "fetching data" or "loading" — the data is already here
-- Generate the full application UI with all the real data integrated
-
-Embed downloaded images using the "image" node type:
-  { "id": "hero_img", "type": "image", "src": "{{DOWNLOADED_IMAGE_0}}", "alt": "Description", "fit": "cover", "radius": "md" }
-Use "card" node's "image" field for card header images.
+- Generate the COMPLETE final UI with the provided real data integrated
+- For downloaded images, use the provided placeholders (e.g., {{DOWNLOADED_IMAGE_N}}) in node fields such as "image.src" or "card.image".
 
 If an IMAGE SLOT CONTRACT is provided, you MUST:
 1. Generate the exact image-bearing nodes listed in the contract (by nodeId or sectionHint).
@@ -263,17 +234,14 @@ If an IMAGE SLOT CONTRACT is provided, you MUST:
 5. Do NOT invent new {{DOWNLOADED_IMAGE_N}} placeholders — only use the ones from the contract.
 
 --- EXTERNAL LINK NODE ---
-29. The "external_link" node renders a button-styled element that opens a URL in a new browser tab when clicked.
-   Unlike "button" nodes, "external_link" does NOT trigger an AI state transition — it is a pure navigation action.
-   - REQUIRED fields: "label" (string, button text), "url" (string, the target URL)
-   - OPTIONAL: "variant" ("primary" | "secondary" | "ghost" | "danger") — same visual styles as buttons
-   - Use semanticRole = "navigation" for external links
-   - USE "external_link" WHEN: the user wants to link to an external website, documentation, GitHub repo, etc.
-   - USE "button" INSTEAD WHEN: the action should trigger AI state transition (calculate, analyze, generate, etc.)
-   - Example: { "id": "github_link", "type": "external_link", "label": "View on GitHub", "url": "https://github.com/example/repo", "variant": "ghost", "semanticRole": "navigation", "intent": "Open GitHub repository", "expectedEffect": "User navigates to GitHub in a new tab" }
+The "external_link" node renders a button-styled element that opens a URL in a new browser tab when clicked.
+Unlike "button" nodes, it does NOT trigger an AI state transition.
+- REQUIRED: "label" (button text), "url" (target URL)
+- Use "external_link" for navigation to external sites; use "button" for AI state transitions.
 
 --- OUTPUT FORMAT ---
-30. Output ONLY a raw JSON object. Do NOT wrap in markdown code fences. The response must start with '{' and end with '}'.
-31. Ensure all strings are properly escaped. No trailing commas. All property names must be double-quoted.
-32. The complete JSON must be parseable by JSON.parse() without modification.`;
+Output ONLY a raw JSON object. Do NOT wrap in markdown code fences.
+The response must start with '{' and end with '}'.
+Ensure all strings are properly escaped, no trailing commas, and all property names are double-quoted.
+The JSON must be parseable by JSON.parse() without modification.`;
 }
