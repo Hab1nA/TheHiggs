@@ -150,7 +150,7 @@ For modules that are PURELY LOCAL (calculator buttons, static text, layout eleme
 Example:
   { moduleId: "mod_1", purpose: "...", suggestedComponent: "card", contentSpec: "...", searchQueries: { web: ["..."], image: ["..."] } }
 
-Output ONLY valid JSON conforming to the schema. No markdown, no explanations.`;
+Output ONLY valid JSON conforming to the schema.`;
 }
 
 /** Refine a short user query into a detailed UI generation prompt */
