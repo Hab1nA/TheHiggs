@@ -139,6 +139,12 @@ export type LocalAction =
       type: "append_text";
       targetBinding: string;
       text: string;
+    }
+  | {
+      type: "set_active_tab";
+      tabsId: string;
+      nextTab: string;
+      notifyAI?: boolean;
     };
 
 // -----------------------------------------------------------

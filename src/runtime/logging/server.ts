@@ -35,7 +35,14 @@ export async function appendRuntimeLog(
   if (!isRuntimeLoggingEnabled() || !event.pageLogId) return false;
 
   try {
-    const filePath = await findLogFile(event.pageLogId);
+    const filePath =
+      (await findLogFile(event.pageLogId)) ??
+      (await getOrCreateLogFile({
+        pageLogId: event.pageLogId,
+        pageStartedAt: event.timestamp ?? new Date().toISOString(),
+        sessionId: event.sessionId,
+        initialQuery: "runtime-event",
+      }));
     if (!filePath) {
       console.warn(`[runtime-log] No page log file found for pageLogId=${event.pageLogId}; event type=${event.type} dropped`);
       return false;

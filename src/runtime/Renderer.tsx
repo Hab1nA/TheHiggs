@@ -146,6 +146,7 @@ export default function Renderer({
   setLocalValue,
   onAIEvent,
 }: RendererProps) {
+  const rootNode = React.useContext(CurrentUIContext) ?? node;
   if (!node || node.visible === false) return null;
 
   // Use explicit narrowing by type + cast for field access
@@ -153,7 +154,7 @@ export default function Renderer({
   const t = node.type;
 
   return (
-    <CurrentUIContext.Provider value={node}>
+    <CurrentUIContext.Provider value={rootNode}>
       {renderNode(t, n, node, localState, setLocalValue, onAIEvent)}
     </CurrentUIContext.Provider>
   );
@@ -433,6 +434,57 @@ function RenderKids({
   );
 }
 
+function findTabsNodeById(
+  node: UINode | null,
+  tabsId: string,
+): { id: string; tabs: Array<{ id: string; label: string; children: UINode[] }> } | null {
+  if (!node || typeof node !== "object") return null;
+  const current = node as Record<string, unknown>;
+  if (current.type === "tabs" && current.id === tabsId) {
+    return current as {
+      id: string;
+      tabs: Array<{ id: string; label: string; children: UINode[] }>;
+    };
+  }
+  if (Array.isArray(current.children)) {
+    for (const child of current.children as UINode[]) {
+      const found = findTabsNodeById(child, tabsId);
+      if (found) return found;
+    }
+  }
+  if (current.primary) {
+    const found = findTabsNodeById(current.primary as UINode, tabsId);
+    if (found) return found;
+  }
+  if (current.secondary) {
+    const found = findTabsNodeById(current.secondary as UINode, tabsId);
+    if (found) return found;
+  }
+  if (Array.isArray(current.tabs)) {
+    for (const tab of current.tabs as Array<{ children?: UINode[] }>) {
+      for (const child of tab.children ?? []) {
+        const found = findTabsNodeById(child, tabsId);
+        if (found) return found;
+      }
+    }
+  }
+  if (Array.isArray(current.footer)) {
+    for (const child of current.footer as UINode[]) {
+      const found = findTabsNodeById(child, tabsId);
+      if (found) return found;
+    }
+  }
+  if (Array.isArray(current.items)) {
+    for (const item of current.items as Array<{ children?: UINode[] }>) {
+      for (const child of item.children ?? []) {
+        const found = findTabsNodeById(child, tabsId);
+        if (found) return found;
+      }
+    }
+  }
+  return null;
+}
+
 type RProps = {
   n: Record<string, unknown>;
   localState: LocalUIState;
@@ -651,14 +703,56 @@ function PanelRender({ n, localState, setLocalValue, onAIEvent }: RProps) {
 function TabsRender({ n, localState, setLocalValue, onAIEvent }: RProps) {
   const currentUI = useCurrentUI();
   const [activeTab, setActiveTab] = React.useState(String(n.activeTab));
-  const tabs =
-    (n.tabs as Array<{ id: string; label: string; children: UINode[] }>) ?? [];
+  const tabs = React.useMemo(
+    () =>
+      (n.tabs as Array<{ id: string; label: string; children: UINode[] }>) ??
+      [],
+    [n.tabs],
+  );
   const active = tabs.find((t: { id: string }) => t.id === activeTab);
 
   // Sync local state when AI changes activeTab prop
   useEffect(() => {
     setActiveTab(String(n.activeTab));
   }, [n.activeTab]);
+
+  useEffect(() => {
+    function handleLocalTabSwitch(event: Event) {
+      const detail = (event as CustomEvent).detail as
+        | {
+            tabsId?: string;
+            nextTab?: string;
+            notifyAI?: boolean;
+          }
+        | undefined;
+      if (!detail || detail.tabsId !== String(n.id) || !detail.nextTab) {
+        return;
+      }
+      if (!tabs.some((tab) => tab.id === detail.nextTab)) return;
+
+      const previousTab = activeTab;
+      setActiveTab(detail.nextTab);
+      if (detail.notifyAI) {
+        import("./event").then(
+          ({ createTabChangeEvent, createClientSnapshot }) => {
+            onAIEvent(
+              createTabChangeEvent(
+                String(n.id),
+                previousTab,
+                detail.nextTab!,
+                createClientSnapshot(localState, currentUI ?? null),
+              ),
+            );
+          },
+        );
+      }
+    }
+
+    window.addEventListener("auir:set-active-tab", handleLocalTabSwitch);
+    return () => {
+      window.removeEventListener("auir:set-active-tab", handleLocalTabSwitch);
+    };
+  }, [n.id, tabs, activeTab, localState, currentUI, onAIEvent]);
 
   const handleTabClick = useCallback(
     (tabId: string) => {
@@ -1147,20 +1241,47 @@ function ButtonRender({ n, localState, setLocalValue, onAIEvent }: RProps) {
   const localAction = n.localAction as
     | {
         type: string;
-        binding: string;
+        binding?: string;
         step?: number;
         min?: number;
         max?: number;
         value?: unknown;
         targetBinding?: string;
         text?: string;
+        tabsId?: string;
+        nextTab?: string;
+        notifyAI?: boolean;
       }
     | undefined;
 
   const handleClick = useCallback(() => {
     const isAI = interaction?.mode === "ai_transition" || !interaction;
     if (localAction && interaction?.mode === "local") {
+      if (localAction.type === "set_active_tab") {
+        const tabsId = localAction.tabsId;
+        const nextTab = localAction.nextTab;
+        const tabsNode =
+          tabsId && currentUI ? findTabsNodeById(currentUI, tabsId) : null;
+        if (
+          tabsNode &&
+          nextTab &&
+          tabsNode.tabs.some((tab) => tab.id === nextTab)
+        ) {
+          window.dispatchEvent(
+            new CustomEvent("auir:set-active-tab", {
+              detail: {
+                tabsId,
+                nextTab,
+                notifyAI: localAction.notifyAI === true,
+              },
+            }),
+          );
+        }
+        return;
+      }
+
       const binding = localAction.binding;
+      if (!binding) return;
       const current = Number(resolveBindingValue(localState, binding, 0));
       let next: unknown;
       if (localAction.type === "increment")

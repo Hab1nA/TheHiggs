@@ -12,10 +12,10 @@
 
 import { buildAUIRSystemPrompt } from "@/auir/prompt";
 import {
-  auirResponseSchema,
   imageBlueprintSchema,
   type ImageBlueprint,
 } from "@/auir/schema";
+import { auirResponseGenerationSchema } from "@/auir/generationSchema";
 import type { AUIRRequest, AUIRResponse, UINode } from "@/auir/types";
 import { validateOrRetry } from "@/auir/validate";
 import { appendRuntimeLog } from "@/runtime/logging/server";
@@ -1168,7 +1168,7 @@ async function generateWithRetry(
       () =>
         generateObject({
           model,
-          schema: auirResponseSchema,
+          schema: auirResponseGenerationSchema,
           system: systemPrompt,
           prompt: JSON.stringify(promptObj),
           mode: "json",
@@ -1237,7 +1237,7 @@ async function generateWithRetry(
       () =>
         generateObject({
           model,
-          schema: auirResponseSchema,
+          schema: auirResponseGenerationSchema,
           system: shortSystem,
           prompt: JSON.stringify(promptObj),
           mode: "json",
@@ -1304,7 +1304,7 @@ async function generateWithRetry(
       () =>
         generateObject({
           model,
-          schema: auirResponseSchema,
+          schema: auirResponseGenerationSchema,
           system: minimalSystem,
           prompt: JSON.stringify(minimalPrompt),
           mode: "json",

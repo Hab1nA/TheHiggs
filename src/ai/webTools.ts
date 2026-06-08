@@ -119,6 +119,13 @@ const MAX_SEARCH_RESULTS = 30;
 const DEFAULT_MAX_IMAGE_RESULTS = 20;
 const MAX_IMAGE_RESULTS = 50;
 const MAX_DOWNLOAD_BYTES = 20 * 1024 * 1024; // 20 MB 上限
+const MAX_EMBEDDED_IMAGE_BYTES = Number(
+  process.env.MAX_EMBEDDED_IMAGE_BYTES ?? 96 * 1024,
+);
+const BLOCKED_IMAGE_DOWNLOAD_HOSTS = new Set([
+  "stockcake.com",
+  "images.stockcake.com",
+]);
 
 /** 允许下载的 Content-Type 白名单 */
 const ALLOWED_CONTENT_TYPES = [
@@ -161,6 +168,39 @@ function urlLooksLikeImage(url: string): boolean {
   } catch {
     return false;
   }
+}
+
+function isBlockedImageDownloadHost(url: string | URL): boolean {
+  const hostname =
+    typeof url === "string" ? new URL(url).hostname : url.hostname;
+  const normalized = hostname.toLowerCase();
+  for (const blocked of BLOCKED_IMAGE_DOWNLOAD_HOSTS) {
+    if (normalized === blocked || normalized.endsWith(`.${blocked}`)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function filterDownloadableImageResults(
+  output: ImageSearchOutput,
+): ImageSearchOutput {
+  const results = output.results.filter((result) => {
+    try {
+      return !isBlockedImageDownloadHost(result.imageUrl);
+    } catch {
+      return false;
+    }
+  });
+  if (results.length === output.results.length) return output;
+  return {
+    ...output,
+    results,
+    error:
+      results.length > 0
+        ? output.error
+        : "Image results only contained blocked hosts",
+  };
 }
 
 /** 根据 URL 扩展名猜测图片 MIME 类型（用于 octet-stream 回退） */
@@ -901,38 +941,50 @@ export async function imageSearch(
 ): Promise<ImageSearchOutput> {
   // Provider 1: Serper.dev (Google 图片搜索，最高质量)
   const serperResult = await searchImagesViaSerper(params);
-  if (serperResult && serperResult.results.length > 0) {
+  const filteredSerperResult = serperResult
+    ? filterDownloadableImageResults(serperResult)
+    : null;
+  if (filteredSerperResult && filteredSerperResult.results.length > 0) {
     console.log(
-      `[WebTools] imageSearch via serper: ${serperResult.results.length} results`,
+      `[WebTools] imageSearch via serper: ${filteredSerperResult.results.length} results`,
     );
-    return serperResult;
+    return filteredSerperResult;
   }
 
   // Provider 2: Pixabay (免费图片 API，高质量)
   const pixabayResult = await searchImagesViaPixabay(params);
-  if (pixabayResult && pixabayResult.results.length > 0) {
+  const filteredPixabayResult = pixabayResult
+    ? filterDownloadableImageResults(pixabayResult)
+    : null;
+  if (filteredPixabayResult && filteredPixabayResult.results.length > 0) {
     console.log(
-      `[WebTools] imageSearch via pixabay: ${pixabayResult.results.length} results`,
+      `[WebTools] imageSearch via pixabay: ${filteredPixabayResult.results.length} results`,
     );
-    return pixabayResult;
+    return filteredPixabayResult;
   }
 
   // Provider 3: Pexels (免费图片 API)
   const pexelsResult = await searchImagesViaPexels(params);
-  if (pexelsResult && pexelsResult.results.length > 0) {
+  const filteredPexelsResult = pexelsResult
+    ? filterDownloadableImageResults(pexelsResult)
+    : null;
+  if (filteredPexelsResult && filteredPexelsResult.results.length > 0) {
     console.log(
-      `[WebTools] imageSearch via pexels: ${pexelsResult.results.length} results`,
+      `[WebTools] imageSearch via pexels: ${filteredPexelsResult.results.length} results`,
     );
-    return pexelsResult;
+    return filteredPexelsResult;
   }
 
   // Provider 4: Bing Image Scraping (免费，无需 key)
   const bingResult = await searchImagesViaBingScraping(params);
-  if (bingResult && bingResult.results.length > 0) {
+  const filteredBingResult = bingResult
+    ? filterDownloadableImageResults(bingResult)
+    : null;
+  if (filteredBingResult && filteredBingResult.results.length > 0) {
     console.log(
-      `[WebTools] imageSearch via bing-image-scraping: ${bingResult.results.length} results`,
+      `[WebTools] imageSearch via bing-image-scraping: ${filteredBingResult.results.length} results`,
     );
-    return bingResult;
+    return filteredBingResult;
   }
 
   // 所有 Provider 都失败
@@ -973,6 +1025,15 @@ export async function downloadResource(
     return createDownloadError(
       url,
       `Protocol "${parsedUrl.protocol}" not allowed. Only http/https.`,
+    );
+  }
+  if (
+    (expectedType === "auto" || expectedType === "image") &&
+    isBlockedImageDownloadHost(parsedUrl)
+  ) {
+    return createDownloadError(
+      url,
+      `Image host "${parsedUrl.hostname}" is blocked due to repeated 403 responses`,
     );
   }
 
@@ -1144,6 +1205,18 @@ async function processDownloadResponse(
       : isText
         ? "text"
         : "unknown";
+
+  if (
+    isImage &&
+    expectedType !== "json" &&
+    expectedType !== "text" &&
+    arrayBuffer.byteLength > MAX_EMBEDDED_IMAGE_BYTES
+  ) {
+    return createDownloadError(
+      url,
+      `Image too large to embed (${arrayBuffer.byteLength} bytes, max ${MAX_EMBEDDED_IMAGE_BYTES})`,
+    );
+  }
 
   // 转换数据
   let data: string;

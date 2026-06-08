@@ -312,6 +312,12 @@ const localActionSchema = z.discriminatedUnion("type", [
     targetBinding: z.string(),
     text: z.string(),
   }),
+  z.object({
+    type: z.literal("set_active_tab"),
+    tabsId: z.string(),
+    nextTab: z.string(),
+    notifyAI: z.boolean().optional(),
+  }),
 ]);
 
 const buttonNodeSchema = z.object({

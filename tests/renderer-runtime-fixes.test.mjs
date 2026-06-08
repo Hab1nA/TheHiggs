@@ -180,8 +180,8 @@ test("Issue #3: CurrentUIContext is created and provided", () => {
 
   // Context should be provided in Renderer
   assert.ok(
-    src.includes("<CurrentUIContext.Provider value={node}>"),
-    "CurrentUIContext.Provider should wrap rendered content",
+    src.includes("<CurrentUIContext.Provider value={rootNode}>"),
+    "CurrentUIContext.Provider should provide the root UI tree",
   );
 
   // useCurrentUI hook should exist

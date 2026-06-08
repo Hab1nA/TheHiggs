@@ -98,6 +98,7 @@ You MUST actively design diverse, visually rich, and well-structured UIs. Follow
      Example: { "id": "btn_sin", "type": "button", "label": "sin(", "intent": "append_sin_function", "interaction": { "mode": "local" }, "localAction": { "type": "append_text", "targetBinding": "formula", "text": "sin(" } }
      Use cases: calculator keyboards, formula editors, code snippet inserters, quick-reply buttons, text template buttons.
      Constraint: targetBinding MUST reference an existing text_input or textarea binding on the same screen.
+   - VIEW SWITCHING: Prefer a "tabs" node for Kanban/Gantt/Workload or similar switchable views. If you render separate toolbar buttons for these views, each button MUST use interaction.mode="local" and localAction { "type": "set_active_tab", "tabsId": "<target tabs id>", "nextTab": "<target tab id>" }. Use notifyAI=true only when the AI must react to the view change.
 
 10. RESPECT APP CONTEXT: Design layouts appropriate to the app kind:
     - "dashboard" → Use grids with kpi_cards, stat_groups, charts, and region-based layout
