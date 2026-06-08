@@ -598,9 +598,8 @@ ${newTruncated}
 1. Perform the review described in the system prompt.
 2. Fix ALL issues you find directly in the output JSON.
 3. Include the "_review" metadata field.
-4. Output ONLY the JSON object — no markdown, no explanations outside JSON.
-5. The output must start with "{" and end with "}".
-6. Be conservative — don't rewrite the entire UI, just fix the issues.`;
+4. Output ONLY the JSON object (no markdown).
+5. Be conservative — don't rewrite the entire UI, just fix the issues.`;
   }
 
   // Consistency review 需要 previousUI
@@ -633,9 +632,8 @@ ${newTruncated}
 2. Compare the NEW UI against the PREVIOUS UI for layout/style consistency.
 3. Fix ALL issues you find directly in the output JSON.
 4. Include the "_review" metadata field.
-5. Output ONLY the JSON object — no markdown, no explanations outside JSON.
-6. The output must start with "{" and end with "}".
-7. Be conservative — don't rewrite the entire UI, just fix consistency issues.`;
+5. Output ONLY the JSON object (no markdown).
+6. Be conservative — don't rewrite the entire UI, just fix consistency issues.`;
 }
 
 // ============================================================
