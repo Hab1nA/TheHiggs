@@ -1295,8 +1295,7 @@ async function generateWithRetry(
     const minimalPrompt = { ...promptObj };
     delete minimalPrompt.toolResultsContext;
     minimalPrompt.instruction =
-      "You must respond with a single valid json object conforming to the AUIRResponse schema. " +
-      "Output ONLY the json object. Generate a complete UI based on the event.";
+      "Generate a complete UI based on the event.";
 
     const response = await validateOrRetry(
       () =>
