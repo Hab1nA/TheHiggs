@@ -114,26 +114,74 @@ export async function runAIRuntime(
   });
 
   // Check if refine mode is requested (two-step AI pipeline)
+  // The frontend SearchLauncher calls POST /api/refine first, then embeds
+  // the result in the event as refinedPrompt + refinedContext. When those
+  // fields are present we MUST reuse them instead of calling refineUserQuery()
+  // again — the second call would be redundant and may fail due to schema
+  // validation issues, causing the entire refine result to be lost.
   let refineResult: RefineOutput | undefined;
   if (
     request.event.type === "app.search" &&
     request.event.refine &&
     request.event.query.trim()
   ) {
-    console.log("[AI Runtime] Refine mode enabled — step 1: refining query...");
-    try {
-      refineResult = await refineUserQuery(request.event.query, pageLogContext);
+    if (request.event.refinedPrompt && request.event.refinedContext) {
+      // Frontend already refined via /api/refine — reuse directly
+      const ctx = request.event.refinedContext;
+      refineResult = {
+        refinedPrompt: request.event.refinedPrompt,
+        appTitle: ctx.appTitle ?? "",
+        appKind: (ctx.appKind as RefineOutput["appKind"]) ?? "unknown",
+        appDescription: ctx.appDescription ?? "",
+        keyFeatures: ctx.keyFeatures ?? [],
+        suggestedLayout: ctx.suggestedLayout ?? "",
+        suggestedComponents: ctx.suggestedComponents ?? [],
+        // Frontend refine does not produce uiModules — this means
+        // generateNextAUIRState will fall through to AI-driven tool
+        // decisions instead of plan-derived ones. This is acceptable:
+        // the refine supplement still provides the detailed spec.
+        uiModules: [],
+      };
       console.log(
-        "[AI Runtime] Refine complete:",
+        "[AI Runtime] Reusing frontend refine result:",
         `kind=${refineResult.appKind}, title="${refineResult.appTitle}", features=${refineResult.keyFeatures.length}`,
       );
-    } catch (err) {
-      console.error(
-        "[AI Runtime] Refine step failed, falling back to direct generation:",
-        err,
+      await appendRuntimeLog({
+        type: "runtime.refine.source",
+        pageLogId: pageLogContext?.pageLogId,
+        sessionId: request.session.sessionId,
+        turn: request.session.turn,
+        stage: "runtime",
+        status: "info",
+        payload: {
+          source: "frontend",
+          appKind: refineResult.appKind,
+          appTitle: refineResult.appTitle,
+          featureCount: refineResult.keyFeatures.length,
+        },
+      });
+    } else {
+      // No pre-refined data — run refine on the backend
+      console.log(
+        "[AI Runtime] Refine mode enabled — step 1: refining query...",
       );
-      // Continue without refinement — graceful degradation
-      refineResult = undefined;
+      try {
+        refineResult = await refineUserQuery(
+          request.event.query,
+          pageLogContext,
+        );
+        console.log(
+          "[AI Runtime] Refine complete:",
+          `kind=${refineResult.appKind}, title="${refineResult.appTitle}", features=${refineResult.keyFeatures.length}`,
+        );
+      } catch (err) {
+        console.error(
+          "[AI Runtime] Refine step failed, falling back to direct generation:",
+          err,
+        );
+        // Continue without refinement — graceful degradation
+        refineResult = undefined;
+      }
     }
   }
 
