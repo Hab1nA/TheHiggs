@@ -10,12 +10,9 @@
 // state + tool results，导致 DeepSeek JSON mode 输出失败。
 // 新架构将工具决策分离为独立调用，从根本上解决此问题。
 
-import { buildAUIRSystemPrompt } from "@/auir/prompt";
-import {
-  imageBlueprintSchema,
-  type ImageBlueprint,
-} from "@/auir/schema";
 import { auirResponseGenerationSchema } from "@/auir/generationSchema";
+import { buildAUIRSystemPrompt } from "@/auir/prompt";
+import { imageBlueprintSchema, type ImageBlueprint } from "@/auir/schema";
 import type { AUIRRequest, AUIRResponse, UINode } from "@/auir/types";
 import { validateOrRetry } from "@/auir/validate";
 import { appendRuntimeLog } from "@/runtime/logging/server";
@@ -1294,8 +1291,7 @@ async function generateWithRetry(
     const minimalSystem = buildAUIRSystemPrompt();
     const minimalPrompt = { ...promptObj };
     delete minimalPrompt.toolResultsContext;
-    minimalPrompt.instruction =
-      "Generate a complete UI based on the event.";
+    minimalPrompt.instruction = "Generate a complete UI based on the event.";
 
     const response = await validateOrRetry(
       () =>
