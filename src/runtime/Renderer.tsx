@@ -308,7 +308,8 @@ function renderNode(
         onAIEvent={onAIEvent}
       />
     );
-  if (t === "breadcrumb") return <BreadcrumbRender n={n} />;
+  if (t === "breadcrumb")
+    return <BreadcrumbRender n={n} onAIEvent={onAIEvent} />;
   if (t === "tag") return <TagRender n={n} />;
   if (t === "list") return <ListRender n={n} />;
   if (t === "quote") return <QuoteRender n={n} />;
@@ -2170,21 +2171,54 @@ function AccordionRender({ n, localState, setLocalValue, onAIEvent }: RProps) {
   );
 }
 
-function BreadcrumbRender({ n }: RSimple) {
-  const items = n.items as Array<{ label: string; href?: string }>;
+function BreadcrumbRender({
+  n,
+  onAIEvent,
+}: RSimple & { onAIEvent?: (e: AUIREvent) => void }) {
+  const items = n.items as Array<{
+    label: string;
+    href?: string;
+    intent?: string;
+  }>;
   const sep = String(n.separator ?? "/");
+
+  const handleBreadcrumbClick = useCallback(
+    (
+      item: { label: string; href?: string; intent?: string },
+      index: number,
+    ) => {
+      if (onAIEvent) {
+        onAIEvent({
+          type: "component.click",
+          target: {
+            id: String(n.id ?? "breadcrumb"),
+            type: "breadcrumb",
+            label: item.label,
+            intent:
+              item.intent ??
+              `navigate_to_${item.label.toLowerCase().replace(/\s+/g, "_")}`,
+          },
+          payload: { index, label: item.label },
+          timestamp: new Date().toISOString(),
+          eventId: `evt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        });
+      }
+    },
+    [n.id, onAIEvent],
+  );
+
   return (
     <nav className="flex items-center gap-1.5 text-sm flex-wrap">
       {items.map((item, i) => (
         <span key={i} className="flex items-center gap-1.5">
           {i > 0 ? <span className="text-neutral-600">{sep}</span> : null}
           {item.href ? (
-            <a
-              href={item.href}
-              className="text-neutral-400 hover:text-neutral-200 transition-colors"
+            <button
+              onClick={() => handleBreadcrumbClick(item, i)}
+              className="text-neutral-400 hover:text-neutral-200 transition-colors cursor-pointer"
             >
               {item.label}
-            </a>
+            </button>
           ) : (
             <span
               className={
@@ -3089,12 +3123,16 @@ function ImageRender({ n }: { n: Record<string, unknown> }) {
   const heightClass = IMG_HEIGHT_CLASS[String(n.height ?? "auto")] ?? "h-auto";
   const source = n.source as { name?: string; url?: string } | undefined;
 
+  // 检测未解析的占位符字符串（如 {{DOWNLOADED_IMAGE_0}}）
+  const isPlaceholder = /\{\{DOWNLOADED_IMAGE_\d+\}\}/.test(src);
+
   // 安全校验：允许 data: URLs、https: URLs、http: URLs 和相对路径
   const isValidSrc =
-    src.startsWith("data:") ||
-    src.startsWith("https://") ||
-    src.startsWith("http://") ||
-    src.startsWith("/");
+    !isPlaceholder &&
+    (src.startsWith("data:") ||
+      src.startsWith("https://") ||
+      src.startsWith("http://") ||
+      src.startsWith("/"));
 
   return (
     <figure className={`${widthClass} overflow-hidden`}>
@@ -3117,7 +3155,13 @@ function ImageRender({ n }: { n: Record<string, unknown> }) {
         style={{ display: isValidSrc ? "none" : "flex" }}
       >
         <span className="text-neutral-500 text-sm">
-          {isValidSrc ? "" : src ? "⚠️ 不安全的图片来源" : "🖼️ 无图片"}
+          {isValidSrc
+            ? ""
+            : isPlaceholder
+              ? "🖼️ 图片加载失败"
+              : src
+                ? "⚠️ 不安全的图片来源"
+                : "🖼️ 无图片"}
         </span>
       </div>
       {caption ? (

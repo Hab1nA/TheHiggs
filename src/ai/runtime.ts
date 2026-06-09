@@ -484,31 +484,31 @@ export async function runAIRuntime(
         }
       }
 
-      if (effectiveToolResults.length > 0) {
-        console.log(
-          "[AI Runtime] Step 4: replacing image placeholders with data URLs...",
-        );
-        postProcessImageUrls(
-          response,
-          effectiveToolResults,
-          isFallback ? undefined : genResult.imageBlueprint,
-        );
-        if (!isFallback) {
-          forceRealDataMarking(response, toolResults);
-        }
-        await appendRuntimeLog({
-          type: "runtime.tool_results.post_processed",
-          pageLogId: pageLogContext?.pageLogId,
-          sessionId: request.session.sessionId,
-          turn: request.session.turn,
-          stage: "post_runtime",
-          status: "success",
-          payload: {
-            toolResultCount: effectiveToolResults.length,
-            isFallback,
-          },
-        });
+      // Always call postProcessImageUrls to clean unresolved placeholders
+      // even when effectiveToolResults is empty (prevents raw placeholder strings from leaking to UI)
+      console.log(
+        "[AI Runtime] Step 4: replacing image placeholders with data URLs...",
+      );
+      postProcessImageUrls(
+        response,
+        effectiveToolResults,
+        isFallback ? undefined : genResult.imageBlueprint,
+      );
+      if (effectiveToolResults.length > 0 && !isFallback) {
+        forceRealDataMarking(response, toolResults);
       }
+      await appendRuntimeLog({
+        type: "runtime.tool_results.post_processed",
+        pageLogId: pageLogContext?.pageLogId,
+        sessionId: request.session.sessionId,
+        turn: request.session.turn,
+        stage: "post_runtime",
+        status: "success",
+        payload: {
+          toolResultCount: effectiveToolResults.length,
+          isFallback,
+        },
+      });
     }
 
     // ── Persist postProcess preference to session memory ──

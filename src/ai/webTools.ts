@@ -113,7 +113,7 @@ export interface ResourceDownloadOutput {
 // 配置
 // -----------------------------------------------------------
 
-const DEFAULT_TIMEOUT_MS = 30000;
+const DEFAULT_TIMEOUT_MS = 10000; // 10秒超时，减少用户等待时间
 const DEFAULT_MAX_SEARCH_RESULTS = 15;
 const MAX_SEARCH_RESULTS = 30;
 const DEFAULT_MAX_IMAGE_RESULTS = 20;
@@ -471,8 +471,11 @@ async function searchViaBingScraping(
   );
 
   const encodedQuery = encodeURIComponent(params.query);
-  const langParam =
-    params.language === "zh-CN" ? "&setlang=zh-CN" : "&setlang=en";
+  // 使用市场和语言参数来提高搜索质量
+  const isChinese = params.language === "zh-CN";
+  const langParam = isChinese
+    ? "&setlang=zh-CN&mkt=zh-CN&cc=cn"
+    : "&setlang=en-US&mkt=en-US&cc=us";
   const url = `https://www.bing.com/search?q=${encodedQuery}${langParam}&count=${limit}`;
 
   try {

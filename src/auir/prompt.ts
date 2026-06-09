@@ -218,6 +218,15 @@ The following rules apply ONLY when the event signals a new search or new conten
 28. Only propose user memory candidates for explicit preferences or repeated stable behavior.
 29. If the requested app is unsafe or impossible, generate a safe simulated alternative UI.
 
+--- CROSS-TURN DATA CONSISTENCY (CRITICAL) ---
+30. When displaying technical metrics (e.g., Isp, Thrust, Efficiency, performance指标), you MUST:
+    - Store verified metrics in app memory (e.g., app.isp, app.thrust, app.efficiency)
+    - In subsequent turns, READ these values from app memory and use them consistently
+    - DO NOT regenerate or recalculate metrics that were already established
+    - If the user navigates back to a previous view, display the SAME metric values
+31. For comparison views, use the stored metrics from app memory rather than generating new values.
+32. When the user clicks "Back" or navigates to a previous screen, restore the previous data from memory.
+
 *** ABSOLUTE RULE: When you have tool results, you are presenting REAL data. Act accordingly. ***
 
 --- TOOL RESULTS ARE ALREADY AVAILABLE ---

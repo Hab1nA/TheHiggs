@@ -74,6 +74,16 @@ export function validateResponse(
     }
   }
 
+  // Check H1 heading count (should be at most 1 per screen)
+  if (data.next?.ui) {
+    const h1Count = countH1Headings(data.next.ui);
+    if (h1Count > 1) {
+      constraintErrors.push(
+        `Screen has ${h1Count} H1 headings, but should have at most 1. Use H2-H4 for subsections.`,
+      );
+    }
+  }
+
   if (constraintErrors.length > 0) {
     return { ok: false, errors: constraintErrors };
   }
@@ -157,4 +167,39 @@ function collectComponentTypes(node: unknown): Set<string> {
   }
   walk(node);
   return types;
+}
+
+/** 计算 UI tree 中 H1 标题的数量 */
+function countH1Headings(node: unknown): number {
+  let count = 0;
+  function walk(n: unknown) {
+    if (!n || typeof n !== "object") return;
+    const obj = n as Record<string, unknown>;
+    if (
+      obj.type === "heading" &&
+      typeof obj.level === "number" &&
+      obj.level === 1
+    ) {
+      count++;
+    }
+    if ("children" in obj && Array.isArray(obj.children)) {
+      for (const child of obj.children) walk(child);
+    }
+    if ("primary" in obj) walk(obj.primary);
+    if ("secondary" in obj) walk(obj.secondary);
+    if ("tabs" in obj && Array.isArray(obj.tabs)) {
+      for (const tab of obj.tabs) {
+        if (
+          tab &&
+          typeof tab === "object" &&
+          "children" in tab &&
+          Array.isArray(tab.children)
+        ) {
+          for (const child of tab.children) walk(child);
+        }
+      }
+    }
+  }
+  walk(node);
+  return count;
 }
