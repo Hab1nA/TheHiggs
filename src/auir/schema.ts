@@ -937,6 +937,14 @@ export const modalCloseEventSchema = z.object({
   clientSnapshot: clientSnapshotSchema.optional(),
 });
 
+export const drawerCloseEventSchema = z.object({
+  eventId: z.string(),
+  timestamp: z.string(),
+  type: z.literal("drawer.close"),
+  target: z.object({ id: z.string(), closeIntent: z.string().optional() }),
+  clientSnapshot: clientSnapshotSchema.optional(),
+});
+
 export const runtimeCommandEventSchema = z.object({
   eventId: z.string(),
   timestamp: z.string(),
@@ -962,6 +970,7 @@ export const auirEventSchema = z.discriminatedUnion("type", [
   formSubmitEventSchema,
   tabChangeEventSchema,
   modalCloseEventSchema,
+  drawerCloseEventSchema,
   runtimeCommandEventSchema,
   timerRefreshEventSchema,
 ]);

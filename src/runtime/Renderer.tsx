@@ -724,6 +724,10 @@ function PanelRender({ n, localState, setLocalValue, onAIEvent }: RProps) {
 function TabsRender({ n, localState, setLocalValue, onAIEvent }: RProps) {
   const currentUI = useCurrentUI();
   const [activeTab, setActiveTab] = React.useState(String(n.activeTab));
+  // Use ref to avoid stale closure in event listener
+  const activeTabRef = React.useRef(activeTab);
+  activeTabRef.current = activeTab;
+
   const tabs = React.useMemo(
     () =>
       (n.tabs as Array<{ id: string; label: string; children: UINode[] }>) ??
@@ -737,6 +741,7 @@ function TabsRender({ n, localState, setLocalValue, onAIEvent }: RProps) {
     setActiveTab(String(n.activeTab));
   }, [n.activeTab]);
 
+  // Event listener: only re-register when n.id or tabs change (not activeTab)
   useEffect(() => {
     function handleLocalTabSwitch(event: Event) {
       const detail = (event as CustomEvent).detail as
@@ -751,7 +756,7 @@ function TabsRender({ n, localState, setLocalValue, onAIEvent }: RProps) {
       }
       if (!tabs.some((tab) => tab.id === detail.nextTab)) return;
 
-      const previousTab = activeTab;
+      const previousTab = activeTabRef.current;
       setActiveTab(detail.nextTab);
       if (detail.notifyAI) {
         import("./event").then(
@@ -773,10 +778,11 @@ function TabsRender({ n, localState, setLocalValue, onAIEvent }: RProps) {
     return () => {
       window.removeEventListener("auir:set-active-tab", handleLocalTabSwitch);
     };
-  }, [n.id, tabs, activeTab, localState, currentUI, onAIEvent]);
+  }, [n.id, tabs, localState, currentUI, onAIEvent]);
 
   const handleTabClick = useCallback(
     (tabId: string) => {
+      const previousTab = activeTabRef.current;
       setActiveTab(tabId);
       if (
         n.interaction &&
@@ -787,7 +793,7 @@ function TabsRender({ n, localState, setLocalValue, onAIEvent }: RProps) {
             onAIEvent(
               createTabChangeEvent(
                 String(n.id),
-                activeTab,
+                previousTab,
                 tabId,
                 createClientSnapshot(localState, currentUI ?? null),
               ),
@@ -796,7 +802,7 @@ function TabsRender({ n, localState, setLocalValue, onAIEvent }: RProps) {
         );
       }
     },
-    [n, activeTab, localState, currentUI, onAIEvent],
+    [n, localState, currentUI, onAIEvent],
   );
 
   return (
@@ -841,9 +847,25 @@ function ModalRender({ n, localState, setLocalValue, onAIEvent }: RProps) {
       },
     );
   }, [n, localState, currentUI, onAIEvent]);
+
+  // ESC key to close modal
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") handleClose();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handleClose]);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-      <div className="bg-neutral-900 border border-neutral-700 rounded-xl p-6 max-w-lg w-full mx-4 max-h-[80vh] overflow-auto">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+      onClick={handleClose}
+    >
+      <div
+        className="bg-neutral-900 border border-neutral-700 rounded-xl p-6 max-w-lg w-full mx-4 max-h-[80vh] overflow-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-xl font-bold">{String(n.title)}</h2>
           <button
@@ -865,23 +887,62 @@ function ModalRender({ n, localState, setLocalValue, onAIEvent }: RProps) {
 }
 
 function DrawerRender({ n, localState, setLocalValue, onAIEvent }: RProps) {
+  const currentUI = useCurrentUI();
+  const handleClose = useCallback(() => {
+    import("./event").then(
+      ({ createDrawerCloseEvent, createClientSnapshot }) => {
+        onAIEvent(
+          createDrawerCloseEvent(
+            String(n.id),
+            String(n.closeIntent ?? ""),
+            createClientSnapshot(localState, currentUI ?? null),
+          ),
+        );
+      },
+    );
+  }, [n, localState, currentUI, onAIEvent]);
+
+  // ESC key to close drawer
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") handleClose();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handleClose]);
+
   const sc: Record<string, string> = {
     left: "left-0 top-0 h-full w-80",
     right: "right-0 top-0 h-full w-80",
     bottom: "bottom-0 left-0 w-full h-64",
   };
   return (
-    <div
-      className={`fixed z-40 bg-neutral-900 border border-neutral-700 p-4 overflow-auto ${sc[String(n.side)]}`}
-    >
-      <h3 className="text-lg font-bold mb-3">{String(n.title)}</h3>
-      <RenderKids
-        kids={n.children as UINode[]}
-        localState={localState}
-        setLocalValue={setLocalValue}
-        onAIEvent={onAIEvent}
+    <>
+      {/* Backdrop overlay */}
+      <div
+        className="fixed inset-0 z-39 bg-black/40"
+        onClick={handleClose}
       />
-    </div>
+      <div
+        className={`fixed z-40 bg-neutral-900 border border-neutral-700 p-4 overflow-auto ${sc[String(n.side)]}`}
+      >
+        <div className="flex justify-between items-center mb-3">
+          <h3 className="text-lg font-bold">{String(n.title)}</h3>
+          <button
+            onClick={handleClose}
+            className="text-neutral-400 hover:text-neutral-200 text-2xl leading-none"
+          >
+            &times;
+          </button>
+        </div>
+        <RenderKids
+          kids={n.children as UINode[]}
+          localState={localState}
+          setLocalValue={setLocalValue}
+          onAIEvent={onAIEvent}
+        />
+      </div>
+    </>
   );
 }
 
@@ -1182,6 +1243,20 @@ function CodeBlockRender({ n }: RSimple) {
 
 function ChartBarRender({ n }: RSimple) {
   const data = n.data as Array<{ label: string; value: number }>;
+  if (!data || data.length === 0) {
+    return (
+      <div className="bg-neutral-900 rounded-lg p-4">
+        {n.title ? (
+          <h4 className="text-sm font-medium mb-3 text-neutral-300">
+            {String(n.title)}
+          </h4>
+        ) : null}
+        <div className="h-32 flex items-center justify-center text-neutral-500">
+          No data
+        </div>
+      </div>
+    );
+  }
   const maxVal = Math.max(...data.map((d) => d.value), 1);
   return (
     <div className="bg-neutral-900 rounded-lg p-4">
@@ -1227,16 +1302,18 @@ function ChartLineRender({ n }: RSimple) {
       </div>
     );
   }
+  const minY = Math.min(...data.map((d) => d.y), 0);
   const maxY = Math.max(...data.map((d) => d.y), 1);
+  const range = maxY - minY || 1;
   const h = 128; // height in px
   const displayData = data.slice(0, 20);
   const w = 100 / displayData.length; // width percentage per point
 
-  // Calculate points for SVG polyline
+  // Calculate points for SVG polyline (supports negative values)
   const points = displayData
     .map((item, i) => {
       const x = (i + 0.5) * w;
-      const y = h - (item.y / maxY) * h;
+      const y = h - ((item.y - minY) / range) * h;
       return `${x},${y}`;
     })
     .join(" ");
@@ -1264,7 +1341,7 @@ function ChartLineRender({ n }: RSimple) {
             <circle
               key={i}
               cx={(i + 0.5) * w}
-              cy={h - (item.y / maxY) * h}
+              cy={h - ((item.y - minY) / range) * h}
               r="3"
               fill="#2563eb"
             />

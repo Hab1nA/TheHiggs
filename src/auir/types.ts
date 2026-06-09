@@ -919,6 +919,14 @@ export type ModalCloseEvent = {
   clientSnapshot?: ClientSnapshot;
 };
 
+export type DrawerCloseEvent = {
+  eventId: string;
+  timestamp: string;
+  type: "drawer.close";
+  target: { id: string; closeIntent?: string };
+  clientSnapshot?: ClientSnapshot;
+};
+
 export type RuntimeCommandEvent = {
   eventId: string;
   timestamp: string;
@@ -948,6 +956,7 @@ export type AUIREvent =
   | FormSubmitEvent
   | TabChangeEvent
   | ModalCloseEvent
+  | DrawerCloseEvent
   | RuntimeCommandEvent
   | TimerRefreshEvent;
 

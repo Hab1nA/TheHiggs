@@ -10,11 +10,8 @@ import type {
   UINode,
 } from "@/auir/types";
 
-let _eventCounter = 0;
-
 function createEventId(): string {
-  _eventCounter++;
-  return `evt_${String(_eventCounter).padStart(4, "0")}_${Date.now()}`;
+  return `evt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
 function ts(): string {
@@ -174,6 +171,21 @@ export function createModalCloseEvent(
     timestamp: ts(),
     type: "modal.close",
     target: { id: modalId, closeIntent },
+    clientSnapshot,
+  };
+}
+
+/** 创建 drawer.close 事件 */
+export function createDrawerCloseEvent(
+  drawerId: string,
+  closeIntent: string,
+  clientSnapshot?: ClientSnapshot,
+): AUIREvent {
+  return {
+    eventId: createEventId(),
+    timestamp: ts(),
+    type: "drawer.close",
+    target: { id: drawerId, closeIntent },
     clientSnapshot,
   };
 }

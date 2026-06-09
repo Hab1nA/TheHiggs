@@ -71,10 +71,7 @@ export default function SearchLauncher({
   const [refining, setRefining] = useState(false);
 
   // Guard ref: prevents persist effects from overwriting localStorage with
-  // default `false` values before the restore effect has finished. The flag
-  // is deferred via setTimeout(0) so it becomes `true` only after all effects
-  // in the current render batch have executed (critical for React 19 StrictMode
-  // where effects are double-invoked: setup → cleanup → setup).
+  // default `false` values before the restore effect has finished.
   const restoredRef = useRef(false);
 
   // 从 localStorage 恢复 AI 模式开关状态（仅客户端，避免 SSR Hydration 不一致）
@@ -84,12 +81,9 @@ export default function SearchLauncher({
     setPostProcessMode(
       localStorage.getItem("thehiggs_postProcessMode") === "true",
     );
-    // Defer the flag to the next macrotask so that persist effects running
-    // in the same batch (with stale `false` state) are skipped.
-    const timer = setTimeout(() => {
-      restoredRef.current = true;
-    }, 0);
-    return () => clearTimeout(timer);
+    // Mark restore complete within the same effect batch.
+    // The persist effects below will see `true` and write correctly.
+    restoredRef.current = true;
   }, []);
 
   // 持久化 AI 模式开关状态到 localStorage（仅在 restore 完成后写入）

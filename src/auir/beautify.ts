@@ -84,7 +84,7 @@ const DEFAULT_OPTIONS: Required<BeautifyOptions> = {
 
 /**
  * 美化 UI 树：补充缺失的 spacing 参数
- * 原地修改 node 树（mutate），返回修改后的根节点
+ * @mutates root — 直接修改传入的 node 树，返回同一引用
  */
 export function beautifyLayout(
   root: UINode,

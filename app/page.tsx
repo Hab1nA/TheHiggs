@@ -29,7 +29,8 @@ import {
 } from "@/runtime/state";
 import { useCallback, useRef, useState } from "react";
 
-let _sessionId = `sess_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+/** ref to always hold the latest memory (avoids stale closure in handleAIEvent) */
+const memoryRef = { current: null as unknown as AUIRMemory };
 
 /** Memory JSON 超过此字符数时触发异步压缩（~8KB ≈ 2,500 tokens） */
 const MEMORY_COMPRESS_THRESHOLD = 8000;
@@ -92,10 +93,13 @@ async function compressMemoryIfNeeded(
 export default function Home() {
   const [auirState, setAUIRState] = useState<AUIRState | null>(null);
   const [memory, setMemory] = useState<AUIRMemory>(() => createInitialMemory());
+  // Keep ref in sync with state for handleAIEvent closure
+  memoryRef.current = memory;
   const [localState, setLocalState] = useState<LocalUIState>(() =>
     createInitialLocalUIState(),
   );
   const [turn, setTurn] = useState(0);
+  const sessionIdRef = useRef(`sess_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [diagnostics, setDiagnostics] = useState<
@@ -148,7 +152,7 @@ export default function Home() {
       const nextTurn = turn + 1;
       const activePageLogContext = incomingPageLogContext ?? pageLogContext;
       const requestPageLogContext = activePageLogContext
-        ? { ...activePageLogContext, sessionId: _sessionId }
+        ? { ...activePageLogContext, sessionId: sessionIdRef.current }
         : null;
       if (incomingPageLogContext) {
         setPageLogContext(requestPageLogContext);
@@ -158,27 +162,29 @@ export default function Home() {
         event.type === "app.search" ||
         (event.type === "component.click" &&
           event.target?.intent === "perform_search");
+      // Use ref to always read latest memory (avoids stale closure)
+      const latestMemory = memoryRef.current;
       const effectiveMemory = isSearchEvent
         ? {
-            ...memory,
+            ...latestMemory,
             session: {
-              ...memory.session,
+              ...latestMemory.session,
               // Clear stale search context so AI doesn't create comparison panels
               comparisonMode: undefined,
               selectedEntry: undefined,
             },
             app: {
-              ...memory.app,
+              ...latestMemory.app,
               // Clear stale image bindings so AI generates fresh image content
               imageBindings: undefined,
             },
           }
-        : memory;
+        : latestMemory;
       const request: AUIRRequest = {
         protocol: "AUIR",
         version: "0.3",
         session: {
-          sessionId: _sessionId,
+          sessionId: sessionIdRef.current,
           appId: auirState?.app.id,
           turn: nextTurn,
           pageLogId: requestPageLogContext?.pageLogId,
@@ -204,8 +210,8 @@ export default function Home() {
         setTurn(nextTurn);
         // Compute next memory for size check (functional update handles batching)
         const patchedForCheck = response.memoryPatch
-          ? applyMemoryPatch(memory, response.memoryPatch)
-          : memory;
+          ? applyMemoryPatch(latestMemory, response.memoryPatch)
+          : latestMemory;
         const nextMemory: AUIRMemory = {
           ...patchedForCheck,
           ...(response.next?.memory
@@ -255,7 +261,7 @@ export default function Home() {
           // Clear all app-scoped state: memory, session ID, turn counter,
           // local state and diagnostics. This ensures the next app launched
           // from the launcher starts with a clean slate.
-          _sessionId = `sess_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+          sessionIdRef.current = `sess_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
           setMemory(createInitialMemory());
           setLocalState(createInitialLocalUIState());
           setTurn(0);
@@ -278,7 +284,7 @@ export default function Home() {
         setLoading(false);
       }
     },
-    [turn, memory, auirState, pageLogContext, lastEventRef],
+    [turn, auirState, pageLogContext, lastEventRef],
   );
 
   const handleRestart = useCallback(async () => {
@@ -289,7 +295,7 @@ export default function Home() {
       status: "success",
       payload: { reason: "restart" },
     });
-    _sessionId = `sess_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    sessionIdRef.current = `sess_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     setAUIRState(null);
     setMemory(createInitialMemory());
     setLocalState(createInitialLocalUIState());
