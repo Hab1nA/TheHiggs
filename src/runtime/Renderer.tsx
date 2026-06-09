@@ -8,6 +8,23 @@ import type { AUIREvent, LocalUIState, UINode } from "@/auir/types";
 import React, { useCallback, useEffect } from "react";
 import { resolveBindingValue } from "./bindings";
 
+/**
+ * Format a number with thousand separators for display.
+ * Returns the original string if not a valid number.
+ */
+function formatNumber(val: unknown): string {
+  if (typeof val === "number") {
+    return val.toLocaleString();
+  }
+  if (typeof val === "string") {
+    const num = Number(val);
+    if (!isNaN(num) && val.trim() !== "") {
+      return num.toLocaleString();
+    }
+  }
+  return String(val ?? "");
+}
+
 // -----------------------------------------------------------
 // Current UI Context — 为事件创建提供当前 UI 树
 // -----------------------------------------------------------
@@ -437,7 +454,10 @@ function RenderKids({
 function findTabsNodeById(
   node: UINode | null,
   tabsId: string,
-): { id: string; tabs: Array<{ id: string; label: string; children: UINode[] }> } | null {
+): {
+  id: string;
+  tabs: Array<{ id: string; label: string; children: UINode[] }>;
+} | null {
   if (!node || typeof node !== "object") return null;
   const current = node as Record<string, unknown>;
   if (current.type === "tabs" && current.id === tabsId) {
@@ -940,7 +960,7 @@ function MetricRender({ n }: RSimple) {
   return (
     <div className="bg-neutral-800/50 rounded-lg p-3 text-center">
       <div className="text-2xl font-bold text-neutral-100">
-        {String(n.value)}
+        {formatNumber(n.value)}
         {n.unit ? (
           <span className="text-sm text-neutral-400 ml-1">
             {String(n.unit)}
@@ -1172,7 +1192,7 @@ function ChartBarRender({ n }: RSimple) {
       <div className="space-y-2">
         {data.map((item, i) => (
           <div key={i} className="flex items-center gap-2">
-            <span className="text-xs text-neutral-400 w-24 truncate">
+            <span className="text-xs text-neutral-400 min-w-24 truncate">
               {item.label}
             </span>
             <div className="flex-1 bg-neutral-800 rounded-full h-5 overflow-hidden">
@@ -1192,7 +1212,34 @@ function ChartBarRender({ n }: RSimple) {
 
 function ChartLineRender({ n }: RSimple) {
   const data = n.data as Array<{ x: string | number; y: number }>;
+  if (!data || data.length === 0) {
+    return (
+      <div className="bg-neutral-900 rounded-lg p-4">
+        {n.title ? (
+          <h4 className="text-sm font-medium mb-3 text-neutral-300">
+            {String(n.title)}
+          </h4>
+        ) : null}
+        <div className="h-32 flex items-center justify-center text-neutral-500">
+          No data
+        </div>
+      </div>
+    );
+  }
   const maxY = Math.max(...data.map((d) => d.y), 1);
+  const h = 128; // height in px
+  const displayData = data.slice(0, 20);
+  const w = 100 / displayData.length; // width percentage per point
+
+  // Calculate points for SVG polyline
+  const points = displayData
+    .map((item, i) => {
+      const x = (i + 0.5) * w;
+      const y = h - (item.y / maxY) * h;
+      return `${x},${y}`;
+    })
+    .join(" ");
+
   return (
     <div className="bg-neutral-900 rounded-lg p-4">
       {n.title ? (
@@ -1200,20 +1247,36 @@ function ChartLineRender({ n }: RSimple) {
           {String(n.title)}
         </h4>
       ) : null}
-      <div className="flex items-end gap-1 h-32 mt-2">
-        {data.slice(0, 20).map((item, i) => (
-          <div
-            key={i}
-            className="flex-1 flex flex-col items-center"
-            title={`x=${item.x}, y=${item.y}`}
-          >
-            <div className="text-[8px] text-neutral-500 mb-0.5">{item.y}</div>
-            <div
-              className="bg-blue-600 w-full rounded-t"
-              style={{ height: `${(item.y / maxY) * 100}%` }}
+      <div className="relative h-32 mt-2">
+        <svg
+          className="w-full h-full"
+          viewBox={`0 0 100 ${h}`}
+          preserveAspectRatio="none"
+        >
+          <polyline
+            points={points}
+            fill="none"
+            stroke="#2563eb"
+            strokeWidth="2"
+          />
+          {displayData.map((item, i) => (
+            <circle
+              key={i}
+              cx={(i + 0.5) * w}
+              cy={h - (item.y / maxY) * h}
+              r="3"
+              fill="#2563eb"
             />
-          </div>
-        ))}
+          ))}
+        </svg>
+        {/* X-axis labels */}
+        <div className="flex justify-between mt-1">
+          {displayData.map((item, i) => (
+            <span key={i} className="text-[10px] text-neutral-500">
+              {String(item.x)}
+            </span>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -1967,6 +2030,9 @@ function ProgressRender({ n }: RSimple) {
           </span>
         </div>
       ) : null}
+      <div className="flex justify-end text-xs text-neutral-300">
+        {Math.round(pct)}%
+      </div>
       <div className="w-full bg-neutral-800 rounded-full h-2.5 overflow-hidden">
         <div
           className={`h-full rounded-full transition-all duration-500 ${tc[tone] ?? tc.primary}`}
@@ -2182,6 +2248,39 @@ function ListRender({ n }: RSimple) {
     danger: "text-red-300",
   };
   const Container = isOrdered ? "ol" : "ul";
+  const iconEmojiMap: Record<string, string> = {
+    edit: "✏️",
+    trending_up: "📈",
+    trending_down: "📉",
+    star: "⭐",
+    warning: "⚠️",
+    info: "ℹ️",
+    check: "✅",
+    close: "❌",
+    search: "🔍",
+    settings: "⚙️",
+    user: "👤",
+    heart: "❤️",
+    bookmark: "🔖",
+    calendar: "📅",
+    clock: "⏰",
+    link: "🔗",
+    mail: "📧",
+    phone: "📞",
+    location: "📍",
+    file: "📄",
+    folder: "📁",
+    download: "⬇️",
+    upload: "⬆️",
+    refresh: "🔄",
+    plus: "➕",
+    minus: "➖",
+    arrow_left: "⬅️",
+    arrow_right: "➡️",
+    arrow_up: "⬆️",
+    arrow_down: "⬇️",
+  };
+  const getIconEmoji = (icon: string) => iconEmojiMap[icon] ?? "•";
   return (
     <Container
       className={`${isOrdered ? "list-decimal" : "list-none"} pl-5 ${gap}`}
@@ -2195,7 +2294,7 @@ function ListRender({ n }: RSimple) {
         >
           {!isOrdered && item.icon ? (
             <span className="text-neutral-500 mt-0.5 flex-shrink-0">
-              {item.icon}
+              {getIconEmoji(item.icon)}
             </span>
           ) : !isOrdered ? (
             <span className="text-neutral-600 mt-0.5 flex-shrink-0">•</span>
@@ -2405,7 +2504,7 @@ function GaugeRender({ n }: RSimple) {
   const min = Number(n.min);
   const max = Number(n.max);
   const pct = Math.min(100, Math.max(0, ((value - min) / (max - min)) * 100));
-  const size = String(n.size ?? "md");
+  const size = String(n.size ?? "lg");
   const sc: Record<string, string> = {
     sm: "w-16 h-8",
     md: "w-24 h-12",
@@ -2492,7 +2591,7 @@ function KPICardRender({ n }: RSimple) {
       <div className="text-xs text-neutral-400">{String(n.title)}</div>
       <div className="flex items-baseline gap-1">
         <span className="text-3xl font-bold text-neutral-100">
-          {String(n.value)}
+          {formatNumber(n.value)}
         </span>
         {n.unit ? (
           <span className="text-sm text-neutral-400">{String(n.unit)}</span>

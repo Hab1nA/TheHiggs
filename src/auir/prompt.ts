@@ -116,6 +116,8 @@ You MUST actively design diverse, visually rich, and well-structured UIs. Follow
     - DO NOT forget semanticRole and expectedEffect on interactive elements.
     - DO NOT generate screens with zero interactive controls. Every screen needs actionable elements users can click, type, or toggle.
     - DO NOT skip images when the topic has visual appeal. If the subject is tangible or visual (food, places, products, nature), include at least one image.
+    - DO NOT use more than one H1 heading per screen. Use H1 for the main title, H2-H4 for subsections.
+    - When displaying data heatmaps or density visualizations, prefer the "heatmap" component over "image" nodes.
 
 12. Prefer minimal coherent UI changes after ordinary interactions.
 13. Major redesign is allowed only for app.search or explicit redesign requests.

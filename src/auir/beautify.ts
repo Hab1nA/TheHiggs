@@ -97,6 +97,7 @@ export function beautifyLayout(
     opts.defaultGap,
     opts,
   );
+  beautifyContent(root);
   return root;
 }
 
@@ -290,4 +291,103 @@ function autoInsertSpacersInChildren(parent: Record<string, unknown>): void {
   }
 
   parent.children = newChildren;
+}
+
+// -----------------------------------------------------------
+// Content beautification — H1 deduplication and number formatting
+// -----------------------------------------------------------
+
+/**
+ * Format a number with thousand separators.
+ * Returns the original string if not a valid number.
+ */
+function formatNumberForDisplay(val: unknown): string {
+  if (typeof val === "number") {
+    return val.toLocaleString();
+  }
+  if (typeof val === "string") {
+    const num = Number(val);
+    if (!isNaN(num) && val.trim() !== "") {
+      return num.toLocaleString();
+    }
+  }
+  return String(val ?? "");
+}
+
+/**
+ * Beautify content: deduplicate H1 headings and format large numbers.
+ * Mutates the node tree in place.
+ */
+function beautifyContent(root: UINode): void {
+  // Collect all H1 headings
+  const h1Map = new Map<string, Array<Record<string, unknown>>>();
+  walkTree(root as Record<string, unknown>, (node) => {
+    if (node.type === "heading" && node.level === 1) {
+      const text = String(node.text ?? "");
+      if (!h1Map.has(text)) {
+        h1Map.set(text, []);
+      }
+      h1Map.get(text)!.push(node);
+    }
+  });
+
+  // Deduplicate H1: keep the first occurrence, downgrade others to H2
+  for (const [, nodes] of h1Map) {
+    if (nodes.length > 1) {
+      for (let i = 1; i < nodes.length; i++) {
+        nodes[i].level = 2;
+      }
+    }
+  }
+
+  // Format numbers in metric, kpi_card, statistic, progress nodes
+  walkTree(root as Record<string, unknown>, (node) => {
+    const t = node.type as string;
+    if (t === "metric" || t === "kpi_card" || t === "statistic") {
+      if (node.value !== undefined) {
+        node.value = formatNumberForDisplay(node.value);
+      }
+    }
+    if (t === "progress") {
+      if (node.value !== undefined) {
+        node.value = formatNumberForDisplay(node.value);
+      }
+      if (node.max !== undefined) {
+        node.max = formatNumberForDisplay(node.max);
+      }
+    }
+  });
+}
+
+/**
+ * Walk tree and apply callback to each node.
+ */
+function walkTree(
+  node: Record<string, unknown>,
+  callback: (node: Record<string, unknown>) => void,
+): void {
+  callback(node);
+  const children = node.children as unknown[] | undefined;
+  if (Array.isArray(children)) {
+    for (const child of children) {
+      walkTree(child as Record<string, unknown>, callback);
+    }
+  }
+  // Handle split node's primary/secondary
+  if (node.primary) {
+    walkTree(node.primary as Record<string, unknown>, callback);
+  }
+  if (node.secondary) {
+    walkTree(node.secondary as Record<string, unknown>, callback);
+  }
+  // Handle tabs' children
+  if (Array.isArray(node.tabs)) {
+    for (const tab of node.tabs as Array<Record<string, unknown>>) {
+      if (Array.isArray(tab.children)) {
+        for (const child of tab.children) {
+          walkTree(child as Record<string, unknown>, callback);
+        }
+      }
+    }
+  }
 }
