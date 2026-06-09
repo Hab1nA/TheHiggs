@@ -52,20 +52,26 @@ export async function POST(req: Request): Promise<NextResponse<AUIRResponse>> {
 
   try {
     const response = await runAIRuntime(request);
-    const isFallback = response.diagnostics?.simulatedData === true;
+    // 判断是否为真正的降级响应（错误回退），而非正常的模拟数据响应。
+    // simulatedData=true 表示 AI 诚实地标记数据为示例/模拟数据，这是正常行为。
+    // 只有当 diagnostics 包含 errors 时才是真正的降级响应。
+    const isDegraded =
+      (response.diagnostics?.errors?.length ?? 0) > 0 ||
+      (response.diagnostics?.warnings?.some((w) => w.includes("Fallback")) ??
+        false);
+    const hasSimulatedData = response.diagnostics?.simulatedData === true;
     await appendRuntimeLog({
       type: "api.ai_ui.response.sent",
       pageLogId: pageLogContext?.pageLogId,
       sessionId: request.session.sessionId,
       turn: request.session.turn,
       stage: "api",
-      status: isFallback ? "failure" : "success",
+      status: isDegraded ? "failure" : "success",
       durationMs: Date.now() - startedAt,
-      payload: { response, isFallback },
+      payload: { response, isDegraded, hasSimulatedData },
     });
-    // Use 206 Partial Content for fallback responses so clients can distinguish
-    // real AI output from degraded mock responses.
-    return NextResponse.json(response, { status: isFallback ? 206 : 200 });
+    // 只有真正的降级响应才返回 206；simulatedData=true 的正常响应返回 200。
+    return NextResponse.json(response, { status: isDegraded ? 206 : 200 });
   } catch (error) {
     console.error("[API /api/ai-ui] Runtime error:", error);
     const message =
@@ -98,9 +104,15 @@ function getPageLogContext(request: AUIRRequest): PageLogContext | null {
 }
 
 /** Best-effort logging for validation failures — extract pageLogId from raw data if possible */
-async function logValidationFailure(raw: unknown, error: string): Promise<void> {
+async function logValidationFailure(
+  raw: unknown,
+  error: string,
+): Promise<void> {
   try {
-    const obj = (typeof raw === "object" && raw !== null ? raw : {}) as Record<string, unknown>;
+    const obj = (typeof raw === "object" && raw !== null ? raw : {}) as Record<
+      string,
+      unknown
+    >;
     const session = obj.session as Record<string, unknown> | undefined;
     const pageLogId = session?.pageLogId as string | undefined;
     const sessionId = session?.sessionId as string | undefined;

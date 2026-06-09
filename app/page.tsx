@@ -227,8 +227,8 @@ export default function Home() {
           setDiagnostics(response.diagnostics as Record<string, unknown>);
         }
         if (response.diagnostics?.simulatedData) {
-          console.warn(
-            "[TheHiggs] AI response is a mock fallback (simulatedData=true). Check runtime log for details.",
+          console.info(
+            "[TheHiggs] AI 使用示例数据生成界面（simulatedData=true）。如需真实数据，请启用搜索相关功能。",
           );
         }
         await postRuntimeLog(requestPageLogContext, {
