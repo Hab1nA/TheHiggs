@@ -7,12 +7,12 @@
 import { defaultConstraints } from "@/auir/constraints";
 import { applyMemoryPatch, createInitialMemory } from "@/auir/memory";
 import type {
-  AUIREvent,
-  AUIRMemory,
-  AUIRRequest,
-  AUIRResponse,
-  AUIRState,
-  LocalUIState,
+    AUIREvent,
+    AUIRMemory,
+    AUIRRequest,
+    AUIRResponse,
+    AUIRState,
+    LocalUIState,
 } from "@/auir/types";
 import AUIRInspector from "@/components/AUIRInspector";
 import DebugPanel from "@/components/DebugPanel";
@@ -23,9 +23,9 @@ import { postRuntimeLog, sendAUIRRequest } from "@/runtime/client";
 import type { PageLogContext } from "@/runtime/logging/types";
 import Renderer, { AppContextProvider } from "@/runtime/Renderer";
 import {
-  createInitialLocalUIState,
-  hydrateLocalStateFromAUIRState,
-  setLocalValue as updateLocalValue,
+    createInitialLocalUIState,
+    hydrateLocalStateFromAUIRState,
+    setLocalValue as updateLocalValue,
 } from "@/runtime/state";
 import { useCallback, useRef, useState } from "react";
 

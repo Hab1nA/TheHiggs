@@ -9,11 +9,11 @@ import { postRuntimeLog } from "@/runtime/client";
 import { createAppSearchEvent } from "@/runtime/event";
 import type { PageLogContext } from "@/runtime/logging/types";
 import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type FormEvent,
+    useCallback,
+    useEffect,
+    useRef,
+    useState,
+    type FormEvent,
 } from "react";
 
 const EXAMPLES = [
