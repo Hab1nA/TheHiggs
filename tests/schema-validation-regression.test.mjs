@@ -1126,3 +1126,249 @@ test("repairNumericFields converts heatmap 2D array strings to numbers", () => {
   assert.equal(typeof hm.data[1][1], "number");
   assert.equal(hm.data[1][1], 4);
 });
+
+// ─── Test 16: validateRequest auto-repairs previous.ui string numbers ────────
+
+/** 构造合法的 AUIRRequest 骨架（供测试用） */
+function makeValidRequest(previousUI) {
+  return {
+    protocol: "AUIR",
+    version: "0.3",
+    session: { sessionId: "test_sess", turn: 2 },
+    event: {
+      eventId: "evt_test",
+      timestamp: new Date().toISOString(),
+      type: "component.click",
+      target: { id: "btn", type: "button", intent: "open_modal" },
+    },
+    previous: {
+      app: { id: "test_app", title: "Test", kind: "utility" },
+      memory: { app: {}, session: {} },
+      ui: previousUI,
+    },
+    memory: { turn: {}, session: {}, app: {}, user: [] },
+    constraints: {
+      renderMode: "full_state",
+      allowedComponents: [
+        "screen",
+        "container",
+        "grid",
+        "split",
+        "region",
+        "toolbar",
+        "spacer",
+        "divider",
+        "panel",
+        "heading",
+        "text",
+        "button",
+        "text_input",
+        "number_input",
+        "textarea",
+        "select",
+        "checkbox",
+        "slider",
+        "stepper",
+        "external_link",
+        "local_value_display",
+        "table",
+        "metric",
+        "alert",
+        "tabs",
+        "modal",
+        "drawer",
+        "code_block",
+        "chart_bar",
+        "chart_line",
+        "image",
+        "carousel",
+        "badge",
+        "progress",
+        "statistic",
+        "timeline",
+        "accordion",
+        "breadcrumb",
+        "tag",
+        "list",
+        "quote",
+        "card",
+        "description_list",
+        "empty_state",
+        "gauge",
+        "kpi_card",
+        "heatmap",
+        "color_swatch",
+        "radar_chart",
+        "stat_group",
+        "steps",
+        "clock",
+        "timer_refresh",
+      ],
+      maxNodes: 500,
+      maxDepth: 8,
+      maxTextLength: 2000,
+      allowExternalData: false,
+      allowCodeExecution: false,
+      allowToolUse: false,
+      styleSystem: "semantic_tokens_only",
+      layoutPolicy: {
+        allowMultiColumn: true,
+        allowGrid: true,
+        allowSplitView: true,
+        maxGridColumns: 6,
+        maxRegions: 8,
+      },
+      interactionPolicy: {
+        defaultInputMode: "local",
+        defaultButtonMode: "ai_transition",
+        requireClientSnapshotForAITransition: true,
+        allowLocalActions: true,
+        allowDebouncedAITransitions: true,
+      },
+      transitionPolicy: {
+        preferMinimalChange: true,
+        preserveStableIds: true,
+        preserveUserInputs: true,
+        allowMajorRedesignOnlyOn: ["app.search"],
+      },
+    },
+  };
+}
+
+test("validateRequest auto-repairs previous.ui progress node string value/max", () => {
+  const { validateRequest } = validateModule;
+
+  // Simulates the exact scenario: AI generated a UI with string-quoted numbers,
+  // frontend stored it as-is, then sends it back as previous.ui in the next request.
+  const ui = {
+    id: "root",
+    type: "screen",
+    children: Array.from({ length: 20 }, (_, i) => ({
+      id: `node_${i}`,
+      type: "text",
+      text: `Item ${i}`,
+    })).concat([
+      {
+        id: "container_20",
+        type: "container",
+        direction: "column",
+        children: [
+          {
+            id: "demo_progress",
+            type: "progress",
+            label: "进度",
+            value: "70", // string — the exact bug
+            max: "100", // string
+            tone: "primary",
+          },
+        ],
+      },
+    ]),
+  };
+
+  const result = validateRequest(makeValidRequest(ui));
+  assert.equal(
+    result.ok,
+    true,
+    `validateRequest should auto-repair string numbers in previous.ui. Errors: ${result.ok ? "none" : result.errors.join("; ")}`,
+  );
+
+  if (result.ok) {
+    const container = result.value.previous.ui.children[20];
+    const progress = container.children[0];
+    assert.equal(
+      typeof progress.value,
+      "number",
+      "previous.ui progress.value should be repaired to number",
+    );
+    assert.equal(progress.value, 70);
+    assert.equal(
+      typeof progress.max,
+      "number",
+      "previous.ui progress.max should be repaired to number",
+    );
+    assert.equal(progress.max, 100);
+  }
+});
+
+test("validateRequest auto-repairs previous.ui slider string fields", () => {
+  const { validateRequest } = validateModule;
+
+  const ui = {
+    id: "root",
+    type: "screen",
+    children: [
+      {
+        id: "slider1",
+        type: "slider",
+        value: "50",
+        min: "0",
+        max: "100",
+        binding: "vol",
+      },
+    ],
+  };
+
+  const result = validateRequest(makeValidRequest(ui));
+  assert.equal(
+    result.ok,
+    true,
+    `validateRequest should auto-repair slider string numbers. Errors: ${result.ok ? "none" : result.errors.join("; ")}`,
+  );
+});
+
+test("validateRequest still accepts valid requests after repair (no-op)", () => {
+  const { validateRequest } = validateModule;
+
+  const validRequest = {
+    protocol: "AUIR",
+    version: "0.3",
+    session: { sessionId: "test", turn: 1 },
+    event: {
+      eventId: "evt_test",
+      timestamp: new Date().toISOString(),
+      type: "app.search",
+      query: "test",
+    },
+    previous: null,
+    memory: { turn: {}, session: {}, app: {}, user: [] },
+    constraints: {
+      renderMode: "full_state",
+      allowedComponents: ["screen", "text", "button"],
+      maxNodes: 500,
+      maxDepth: 8,
+      maxTextLength: 2000,
+      allowExternalData: false,
+      allowCodeExecution: false,
+      allowToolUse: false,
+      styleSystem: "semantic_tokens_only",
+      layoutPolicy: {
+        allowMultiColumn: true,
+        allowGrid: true,
+        allowSplitView: true,
+        maxGridColumns: 6,
+        maxRegions: 8,
+      },
+      interactionPolicy: {
+        defaultInputMode: "local",
+        defaultButtonMode: "ai_transition",
+        requireClientSnapshotForAITransition: true,
+        allowLocalActions: true,
+        allowDebouncedAITransitions: true,
+      },
+      transitionPolicy: {
+        preferMinimalChange: true,
+        preserveStableIds: true,
+        preserveUserInputs: true,
+        allowMajorRedesignOnlyOn: ["app.search"],
+      },
+    },
+  };
+
+  const result = validateRequest(validRequest);
+  assert.equal(
+    result.ok,
+    true,
+    "Valid request structure should pass even after repair",
+  );
+});

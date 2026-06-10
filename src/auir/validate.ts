@@ -178,8 +178,25 @@ export function repairNumericFields(node: unknown): void {
   }
 }
 
+/**
+ * 修复 AUIRRequest 中的字符串数值。
+ * 客户端回传的 previous.ui 可能包含 LLM 生成时遗留的字符串数值，
+ * 需要在 Zod 校验之前修复。
+ */
+function repairRequest(request: unknown): void {
+  if (!request || typeof request !== "object") return;
+  const r = request as Record<string, unknown>;
+  if (r.previous && typeof r.previous === "object") {
+    const prev = r.previous as Record<string, unknown>;
+    if (prev.ui) repairNumericFields(prev.ui);
+  }
+}
+
 /** 校验 AUIRRequest */
 export function validateRequest(json: unknown): ValidateResult<AUIRRequest> {
+  // Pre-repair: 修复客户端回传的 previous.ui 中的字符串数值
+  repairRequest(json);
+
   const result = auirRequestSchema.safeParse(json);
   if (!result.success) {
     const errors = result.error.issues.map(
