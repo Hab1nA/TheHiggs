@@ -3,11 +3,11 @@
 // ============================================================
 
 import type {
-    AUIREvent,
-    ButtonNode,
-    ClientSnapshot,
-    LocalUIState,
-    UINode,
+  AUIREvent,
+  ButtonNode,
+  ClientSnapshot,
+  LocalUIState,
+  UINode,
 } from "@/auir/types";
 
 function createEventId(): string {

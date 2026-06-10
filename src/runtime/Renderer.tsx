@@ -919,10 +919,7 @@ function DrawerRender({ n, localState, setLocalValue, onAIEvent }: RProps) {
   return (
     <>
       {/* Backdrop overlay */}
-      <div
-        className="fixed inset-0 z-39 bg-black/40"
-        onClick={handleClose}
-      />
+      <div className="fixed inset-0 z-39 bg-black/40" onClick={handleClose} />
       <div
         className={`fixed z-40 bg-neutral-900 border border-neutral-700 p-4 overflow-auto ${sc[String(n.side)]}`}
       >

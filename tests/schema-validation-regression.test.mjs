@@ -505,3 +505,624 @@ test("generateNextState.ts: tool execution only uses Phase 1 decision, not respo
     "Should not iterate response.toolRequests for tool execution",
   );
 });
+
+// ─── Test 11: repairNumericFields coerces string-quoted numbers ─────────────
+
+test("repairNumericFields converts progress node string value/max to numbers", () => {
+  const { repairNumericFields } = validateModule;
+
+  const ui = {
+    id: "root",
+    type: "screen",
+    children: [
+      {
+        id: "demo_progress",
+        type: "progress",
+        label: "进度",
+        value: "70", // string — LLM type hallucination
+        max: "100", // string
+        tone: "primary",
+      },
+    ],
+  };
+
+  repairNumericFields(ui);
+
+  const progress = ui.children[0];
+  assert.equal(
+    typeof progress.value,
+    "number",
+    "value should be number after repair",
+  );
+  assert.equal(progress.value, 70, "value should be 70");
+  assert.equal(
+    typeof progress.max,
+    "number",
+    "max should be number after repair",
+  );
+  assert.equal(progress.max, 100, "max should be 100");
+});
+
+test("repairNumericFields converts slider node string fields to numbers", () => {
+  const { repairNumericFields } = validateModule;
+
+  const ui = {
+    id: "root",
+    type: "screen",
+    children: [
+      {
+        id: "demo_slider",
+        type: "slider",
+        label: "Volume",
+        value: "50",
+        min: "0",
+        max: "100",
+        step: "5",
+        binding: "volume",
+      },
+    ],
+  };
+
+  repairNumericFields(ui);
+
+  const slider = ui.children[0];
+  assert.equal(typeof slider.value, "number");
+  assert.equal(slider.value, 50);
+  assert.equal(typeof slider.min, "number");
+  assert.equal(slider.min, 0);
+  assert.equal(typeof slider.max, "number");
+  assert.equal(slider.max, 100);
+  assert.equal(typeof slider.step, "number");
+  assert.equal(slider.step, 5);
+});
+
+test("repairNumericFields converts number_input string fields to numbers", () => {
+  const { repairNumericFields } = validateModule;
+
+  const ui = {
+    id: "root",
+    type: "screen",
+    children: [
+      {
+        id: "demo_num",
+        type: "number_input",
+        label: "Count",
+        value: "42",
+        min: "1",
+        max: "100",
+        step: "1",
+        binding: "count",
+      },
+    ],
+  };
+
+  repairNumericFields(ui);
+
+  const numInput = ui.children[0];
+  assert.equal(typeof numInput.value, "number");
+  assert.equal(numInput.value, 42);
+  assert.equal(typeof numInput.min, "number");
+  assert.equal(numInput.min, 1);
+});
+
+test("repairNumericFields converts stepper string fields to numbers", () => {
+  const { repairNumericFields } = validateModule;
+
+  const ui = {
+    id: "root",
+    type: "screen",
+    children: [
+      {
+        id: "demo_stepper",
+        type: "stepper",
+        label: "Qty",
+        value: "3",
+        binding: "qty",
+      },
+    ],
+  };
+
+  repairNumericFields(ui);
+  assert.equal(typeof ui.children[0].value, "number");
+  assert.equal(ui.children[0].value, 3);
+});
+
+test("repairNumericFields converts gauge string fields to numbers", () => {
+  const { repairNumericFields } = validateModule;
+
+  const ui = {
+    id: "root",
+    type: "screen",
+    children: [
+      {
+        id: "demo_gauge",
+        type: "gauge",
+        title: "CPU",
+        value: "75",
+        min: "0",
+        max: "100",
+        thresholds: [
+          { color: "success", min: "0", max: "60" },
+          { color: "warning", min: "60", max: "80" },
+          { color: "danger", min: "80", max: "100" },
+        ],
+      },
+    ],
+  };
+
+  repairNumericFields(ui);
+
+  const gauge = ui.children[0];
+  assert.equal(typeof gauge.value, "number");
+  assert.equal(gauge.value, 75);
+  assert.equal(typeof gauge.thresholds[0].min, "number");
+  assert.equal(gauge.thresholds[0].min, 0);
+  assert.equal(typeof gauge.thresholds[1].max, "number");
+  assert.equal(gauge.thresholds[1].max, 80);
+});
+
+test("repairNumericFields converts chart_bar data values to numbers", () => {
+  const { repairNumericFields } = validateModule;
+
+  const ui = {
+    id: "root",
+    type: "screen",
+    children: [
+      {
+        id: "demo_chart",
+        type: "chart_bar",
+        title: "Sales",
+        data: [
+          { label: "Q1", value: "100" },
+          { label: "Q2", value: "200" },
+        ],
+      },
+    ],
+  };
+
+  repairNumericFields(ui);
+
+  const chart = ui.children[0];
+  assert.equal(typeof chart.data[0].value, "number");
+  assert.equal(chart.data[0].value, 100);
+  assert.equal(typeof chart.data[1].value, "number");
+  assert.equal(chart.data[1].value, 200);
+});
+
+test("repairNumericFields converts chart_line data y values to numbers", () => {
+  const { repairNumericFields } = validateModule;
+
+  const ui = {
+    id: "root",
+    type: "screen",
+    children: [
+      {
+        id: "demo_line",
+        type: "chart_line",
+        data: [
+          { x: "Jan", y: "10" },
+          { x: "Feb", y: "20" },
+        ],
+      },
+    ],
+  };
+
+  repairNumericFields(ui);
+
+  const chart = ui.children[0];
+  assert.equal(typeof chart.data[0].y, "number");
+  assert.equal(chart.data[0].y, 10);
+  // x can be string or number — should NOT be coerced
+  assert.equal(typeof chart.data[0].x, "string");
+});
+
+test("repairNumericFields converts timer_refresh seconds to number", () => {
+  const { repairNumericFields } = validateModule;
+
+  const ui = {
+    id: "root",
+    type: "screen",
+    children: [
+      {
+        id: "timer",
+        type: "timer_refresh",
+        seconds: "5",
+        message: "Loading...",
+        showProgress: true,
+      },
+    ],
+  };
+
+  repairNumericFields(ui);
+  assert.equal(typeof ui.children[0].seconds, "number");
+  assert.equal(ui.children[0].seconds, 5);
+});
+
+test("repairNumericFields converts heading level to number", () => {
+  const { repairNumericFields } = validateModule;
+
+  const ui = {
+    id: "root",
+    type: "screen",
+    children: [{ id: "h", type: "heading", text: "Title", level: "2" }],
+  };
+
+  repairNumericFields(ui);
+  assert.equal(typeof ui.children[0].level, "number");
+  assert.equal(ui.children[0].level, 2);
+});
+
+test("repairNumericFields converts steps.current to number", () => {
+  const { repairNumericFields } = validateModule;
+
+  const ui = {
+    id: "root",
+    type: "screen",
+    children: [
+      {
+        id: "demo_steps",
+        type: "steps",
+        current: "2",
+        items: [
+          { id: "s1", title: "Step 1" },
+          { id: "s2", title: "Step 2" },
+          { id: "s3", title: "Step 3" },
+        ],
+      },
+    ],
+  };
+
+  repairNumericFields(ui);
+  assert.equal(typeof ui.children[0].current, "number");
+  assert.equal(ui.children[0].current, 2);
+});
+
+test("repairNumericFields converts localAction numeric fields", () => {
+  const { repairNumericFields } = validateModule;
+
+  const ui = {
+    id: "root",
+    type: "screen",
+    children: [
+      {
+        id: "btn",
+        type: "button",
+        label: "+1",
+        intent: "increment",
+        localAction: {
+          type: "increment",
+          binding: "count",
+          step: "1",
+          min: "0",
+          max: "100",
+        },
+      },
+    ],
+  };
+
+  repairNumericFields(ui);
+
+  const la = ui.children[0].localAction;
+  assert.equal(typeof la.step, "number");
+  assert.equal(la.step, 1);
+  assert.equal(typeof la.min, "number");
+  assert.equal(la.min, 0);
+  assert.equal(typeof la.max, "number");
+  assert.equal(la.max, 100);
+});
+
+test("repairNumericFields converts interaction.debounceMs to number", () => {
+  const { repairNumericFields } = validateModule;
+
+  const ui = {
+    id: "root",
+    type: "screen",
+    children: [
+      {
+        id: "input",
+        type: "text_input",
+        binding: "search",
+        interaction: {
+          mode: "local",
+          debounceMs: "300",
+        },
+      },
+    ],
+  };
+
+  repairNumericFields(ui);
+  assert.equal(typeof ui.children[0].interaction.debounceMs, "number");
+  assert.equal(ui.children[0].interaction.debounceMs, 300);
+});
+
+// ─── Test 12: repairNumericFields safety — does NOT coerce non-numeric strings ──
+
+test("repairNumericFields does NOT corrupt non-numeric string values", () => {
+  const { repairNumericFields } = validateModule;
+
+  const ui = {
+    id: "root",
+    type: "screen",
+    children: [
+      {
+        id: "bad_progress",
+        type: "progress",
+        value: "not_a_number", // should stay as string → Zod will still reject
+        max: "100",
+      },
+    ],
+  };
+
+  repairNumericFields(ui);
+
+  // Non-numeric string should NOT be converted
+  assert.equal(
+    typeof ui.children[0].value,
+    "string",
+    "Non-numeric string should stay as string",
+  );
+  assert.equal(ui.children[0].value, "not_a_number");
+
+  // Valid numeric string should still be converted
+  assert.equal(typeof ui.children[0].max, "number");
+  assert.equal(ui.children[0].max, 100);
+});
+
+test("repairNumericFields does NOT modify already-correct number values", () => {
+  const { repairNumericFields } = validateModule;
+
+  const ui = {
+    id: "root",
+    type: "screen",
+    children: [
+      {
+        id: "progress",
+        type: "progress",
+        value: 70,
+        max: 100,
+      },
+    ],
+  };
+
+  repairNumericFields(ui);
+
+  // Should remain unchanged
+  assert.equal(typeof ui.children[0].value, "number");
+  assert.equal(ui.children[0].value, 70);
+  assert.equal(typeof ui.children[0].max, "number");
+  assert.equal(ui.children[0].max, 100);
+});
+
+test("repairNumericFields handles empty string (does not coerce to 0)", () => {
+  const { repairNumericFields } = validateModule;
+
+  const ui = {
+    id: "root",
+    type: "screen",
+    children: [
+      {
+        id: "progress",
+        type: "progress",
+        value: "", // empty string — should NOT become 0
+        max: "100",
+      },
+    ],
+  };
+
+  repairNumericFields(ui);
+
+  // Empty string should NOT be coerced to 0
+  assert.equal(
+    typeof ui.children[0].value,
+    "string",
+    "Empty string should stay as string",
+  );
+  assert.equal(ui.children[0].value, "");
+
+  // Valid numeric string should still work
+  assert.equal(typeof ui.children[0].max, "number");
+  assert.equal(ui.children[0].max, 100);
+});
+
+// ─── Test 13: validateResponse auto-repairs string numbers before Zod parse ──
+
+test("validateResponse auto-repairs progress node string value/max and passes", () => {
+  const { validateResponse } = validateModule;
+
+  const response = {
+    protocol: "AUIR",
+    version: "0.3",
+    next: {
+      app: { id: "test", title: "Test", kind: "utility" },
+      memory: { app: {}, session: {} },
+      ui: {
+        id: "root",
+        type: "screen",
+        children: [
+          {
+            id: "demo_progress",
+            type: "progress",
+            label: "进度",
+            value: "70", // string — the exact bug from runtime log
+            max: "100", // string
+            tone: "primary",
+          },
+        ],
+      },
+    },
+  };
+
+  const result = validateResponse(response);
+  assert.equal(
+    result.ok,
+    true,
+    `Should auto-repair string numbers and pass validation. Errors: ${result.ok ? "none" : result.errors.join("; ")}`,
+  );
+
+  if (result.ok) {
+    const progress = result.value.next.ui.children[0];
+    assert.equal(
+      typeof progress.value,
+      "number",
+      "Repaired value should be number",
+    );
+    assert.equal(progress.value, 70);
+    assert.equal(
+      typeof progress.max,
+      "number",
+      "Repaired max should be number",
+    );
+    assert.equal(progress.max, 100);
+  }
+});
+
+test("validateResponse auto-repairs slider node string fields and passes", () => {
+  const { validateResponse } = validateModule;
+
+  const response = {
+    protocol: "AUIR",
+    version: "0.3",
+    next: {
+      app: { id: "test", title: "Test", kind: "utility" },
+      memory: { app: {}, session: {} },
+      ui: {
+        id: "root",
+        type: "screen",
+        children: [
+          {
+            id: "slider1",
+            type: "slider",
+            value: "50",
+            min: "0",
+            max: "100",
+            binding: "vol",
+          },
+        ],
+      },
+    },
+  };
+
+  const result = validateResponse(response);
+  assert.equal(
+    result.ok,
+    true,
+    `Should auto-repair slider string numbers. Errors: ${result.ok ? "none" : result.errors.join("; ")}`,
+  );
+});
+
+test("validateResponse auto-repairs deeply nested string numbers", () => {
+  const { validateResponse } = validateModule;
+
+  const response = {
+    protocol: "AUIR",
+    version: "0.3",
+    next: {
+      app: { id: "test", title: "Test", kind: "utility" },
+      memory: { app: {}, session: {} },
+      ui: {
+        id: "root",
+        type: "screen",
+        children: [
+          {
+            id: "grid",
+            type: "grid",
+            columns: 2,
+            children: [
+              {
+                id: "panel",
+                type: "panel",
+                title: "Stats",
+                children: [
+                  {
+                    id: "progress1",
+                    type: "progress",
+                    value: "45",
+                    max: "100",
+                  },
+                  {
+                    id: "stepper1",
+                    type: "stepper",
+                    value: "7",
+                    binding: "qty",
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    },
+  };
+
+  const result = validateResponse(response);
+  assert.equal(
+    result.ok,
+    true,
+    `Should auto-repair deeply nested string numbers. Errors: ${result.ok ? "none" : result.errors.join("; ")}`,
+  );
+});
+
+// ─── Test 14: repairNumericFields handles radar_chart series values ──────────
+
+test("repairNumericFields converts radar_chart series values to numbers", () => {
+  const { repairNumericFields } = validateModule;
+
+  const ui = {
+    id: "root",
+    type: "screen",
+    children: [
+      {
+        id: "radar",
+        type: "radar_chart",
+        title: "Skills",
+        axes: ["A", "B", "C"],
+        series: [{ name: "Player 1", values: ["80", "60", "90"] }],
+        maxValue: "100",
+      },
+    ],
+  };
+
+  repairNumericFields(ui);
+
+  const radar = ui.children[0];
+  assert.equal(typeof radar.maxValue, "number");
+  assert.equal(radar.maxValue, 100);
+  assert.equal(typeof radar.series[0].values[0], "number");
+  assert.equal(radar.series[0].values[0], 80);
+  assert.equal(typeof radar.series[0].values[1], "number");
+  assert.equal(radar.series[0].values[1], 60);
+});
+
+// ─── Test 15: repairNumericFields handles heatmap data ──────────────────────
+
+test("repairNumericFields converts heatmap 2D array strings to numbers", () => {
+  const { repairNumericFields } = validateModule;
+
+  const ui = {
+    id: "root",
+    type: "screen",
+    children: [
+      {
+        id: "hm",
+        type: "heatmap",
+        title: "Activity",
+        xLabels: ["Mon", "Tue"],
+        yLabels: ["AM", "PM"],
+        data: [
+          ["1", "2"],
+          ["3", "4"],
+        ],
+        colorScale: "blue",
+        cellSize: "md",
+      },
+    ],
+  };
+
+  repairNumericFields(ui);
+
+  const hm = ui.children[0];
+  assert.equal(typeof hm.data[0][0], "number");
+  assert.equal(hm.data[0][0], 1);
+  assert.equal(typeof hm.data[1][1], "number");
+  assert.equal(hm.data[1][1], 4);
+});

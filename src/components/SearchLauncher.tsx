@@ -9,11 +9,11 @@ import { postRuntimeLog } from "@/runtime/client";
 import { createAppSearchEvent } from "@/runtime/event";
 import type { PageLogContext } from "@/runtime/logging/types";
 import {
-    useCallback,
-    useEffect,
-    useRef,
-    useState,
-    type FormEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
 } from "react";
 
 const EXAMPLES = [
@@ -256,9 +256,7 @@ export default function SearchLauncher({
                 <p className="text-sm font-semibold text-neutral-100">
                   TheHiggs
                 </p>
-                <p className="text-xs text-neutral-500">
-                  语义 UI 运行时
-                </p>
+                <p className="text-xs text-neutral-500">语义 UI 运行时</p>
               </div>
             </div>
             <div className="flex flex-wrap gap-2 text-[11px] font-medium uppercase tracking-[0.16em] text-neutral-400">
@@ -279,7 +277,8 @@ export default function SearchLauncher({
               让“上帝粒子”式的底层能力，生长出万能 APP。
             </h1>
             <p className="mt-5 max-w-2xl text-base leading-7 text-neutral-400">
-              TheHiggs 借用希格斯玻色子“上帝粒子”的寓意：让 AI 驻留在自己生成的 UI 中，把自然语言、语义组件和用户事件连接成可持续演化的应用底层。
+              TheHiggs 借用希格斯玻色子“上帝粒子”的寓意：让 AI 驻留在自己生成的
+              UI 中，把自然语言、语义组件和用户事件连接成可持续演化的应用底层。
             </p>
           </div>
 
@@ -373,7 +372,8 @@ export default function SearchLauncher({
                     />
                     {thinkingMode && (
                       <p className="mt-2 text-[11px] leading-relaxed text-amber-300">
-                        开启后，每次生成 UI 时会先进行深度思考推理，适合复杂布局和精细交互。
+                        开启后，每次生成 UI
+                        时会先进行深度思考推理，适合复杂布局和精细交互。
                       </p>
                     )}
 
