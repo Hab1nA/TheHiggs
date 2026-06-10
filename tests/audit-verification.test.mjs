@@ -319,12 +319,12 @@ test("问题6: /api/ai-ui 对 fallback 响应返回 206 而非 200", () => {
   );
   // fallback 应返回 206
   assert.ok(
-    src.includes("isFallback ? 206 : 200"),
+    src.includes("isDegraded ? 206 : 200"),
     "fallback 响应应返回 206 Partial Content",
   );
   // 日志应标记为 failure
   assert.ok(
-    src.includes('status: isFallback ? "failure" : "success"'),
+    src.includes('status: isDegraded ? "failure" : "success"'),
     "fallback 响应的日志 status 应为 failure",
   );
 });
@@ -336,7 +336,7 @@ test("问题6: page.tsx 客户端检测 fallback 并警告", () => {
     src.includes("response.diagnostics?.simulatedData"),
     "客户端应检测 simulatedData",
   );
-  assert.ok(src.includes("mock fallback"), "客户端应对 fallback 发出警告");
+  assert.ok(src.includes("示例数据"), "客户端应对 fallback 发出警告");
 });
 
 // ─── 问题 7: Refine 前端失败路径只写 console，不写 runtime log ──────────────

@@ -657,6 +657,109 @@ function buildMinimalRequestSummary(
       maxDepth: request.constraints.maxDepth,
     },
     previousApp: request.previous?.app ?? null,
+    previousUISummary: request.previous?.ui
+      ? extractUIStructuralSummary(request.previous.ui)
+      : null,
+  };
+}
+
+/**
+ * 从 UI 树中提取紧凑的结构摘要，供 LLM 在多轮交互中保留组件和数据。
+ * 只保留 node id/type/label/binding/children 结构，不含样式等细节。
+ * 限制最大节点数防止 token 溢出。
+ */
+function extractUIStructuralSummary(
+  ui: UINode,
+  maxNodes = 120,
+): Record<string, unknown> {
+  const nodes: Array<Record<string, unknown>> = [];
+  let truncated = false;
+
+  function walk(node: UINode): Record<string, unknown> | null {
+    if (nodes.length >= maxNodes) {
+      truncated = true;
+      return null;
+    }
+    const rec = node as Record<string, unknown>;
+    const summary: Record<string, unknown> = {
+      id: rec.id,
+      type: rec.type,
+    };
+    if (rec.label) summary.label = rec.label;
+    if (rec.binding) summary.binding = rec.binding;
+    if (rec.text && rec.type !== "button") summary.text = rec.text;
+    if (rec.value !== undefined) summary.value = rec.value;
+    if (rec.url) summary.url = rec.url;
+
+    // 递归 children
+    if (Array.isArray(rec.children) && rec.children.length > 0) {
+      const childSummaries: Record<string, unknown>[] = [];
+      for (const child of rec.children as UINode[]) {
+        const cs = walk(child);
+        if (cs) childSummaries.push(cs);
+      }
+      if (childSummaries.length > 0) summary.children = childSummaries;
+    }
+
+    // tabs 节点的 tab 内容
+    if (Array.isArray(rec.tabs) && rec.tabs.length > 0) {
+      const tabSummaries: Record<string, unknown>[] = [];
+      for (const tab of rec.tabs as Array<{
+        id: string;
+        label: string;
+        children: UINode[];
+      }>) {
+        const tabSummary: Record<string, unknown> = {
+          id: tab.id,
+          label: tab.label,
+        };
+        if (tab.children && tab.children.length > 0) {
+          const tabKids: Record<string, unknown>[] = [];
+          for (const child of tab.children) {
+            const cs = walk(child);
+            if (cs) tabKids.push(cs);
+          }
+          if (tabKids.length > 0) tabSummary.children = tabKids;
+        }
+        tabSummaries.push(tabSummary);
+      }
+      if (tabSummaries.length > 0) summary.tabs = tabSummaries;
+    }
+
+    // list items
+    if (Array.isArray(rec.items) && rec.items.length > 0) {
+      const itemSummaries: Record<string, unknown>[] = [];
+      for (const item of rec.items as Array<{
+        children?: UINode[];
+        [k: string]: unknown;
+      }>) {
+        const itemSummary: Record<string, unknown> = {};
+        if (item.label) itemSummary.label = item.label;
+        if (item.text) itemSummary.text = item.text;
+        if (item.value !== undefined) itemSummary.value = item.value;
+        if (Array.isArray(item.children) && item.children.length > 0) {
+          const itemKids: Record<string, unknown>[] = [];
+          for (const child of item.children) {
+            const cs = walk(child);
+            if (cs) itemKids.push(cs);
+          }
+          if (itemKids.length > 0) itemSummary.children = itemKids;
+        }
+        if (Object.keys(itemSummary).length > 0)
+          itemSummaries.push(itemSummary);
+      }
+      if (itemSummaries.length > 0) summary.items = itemSummaries;
+    }
+
+    nodes.push(summary);
+    return summary;
+  }
+
+  const result = walk(ui);
+  return {
+    tree: result,
+    totalNodes: nodes.length,
+    truncated,
   };
 }
 

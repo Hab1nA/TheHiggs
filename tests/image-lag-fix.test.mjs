@@ -154,10 +154,10 @@ describe("CP-3: Frontend — Search clears imageBindings", () => {
 
   it("non-search events still use original memory", () => {
     const src = readSrc("app/page.tsx");
-    // The ternary: isSearchEvent ? effective : raw memory
+    // The ternary: isSearchEvent ? effective : latestMemory
     assert.ok(
-      src.includes(": memory;") || src.includes(": memory\n"),
-      "Non-search events should fall through to raw memory",
+      src.includes(": latestMemory;") || src.includes(": latestMemory\n"),
+      "Non-search events should fall through to latestMemory",
     );
   });
 });
@@ -225,12 +225,12 @@ describe("Non-search events — Unaffected", () => {
 
   it("imageBindings preserved for non-search events", () => {
     const src = readSrc("app/page.tsx");
-    // The ternary ensures non-search uses original memory (with imageBindings)
+    // The ternary ensures non-search uses latestMemory (with imageBindings)
     const ternary = src.indexOf("isSearchEvent");
-    const memRef = src.indexOf(": memory;", ternary);
+    const memRef = src.indexOf(": latestMemory;", ternary);
     assert.ok(
       memRef > ternary,
-      "Non-search events should use original memory (preserving imageBindings)",
+      "Non-search events should use latestMemory (preserving imageBindings)",
     );
   });
 });

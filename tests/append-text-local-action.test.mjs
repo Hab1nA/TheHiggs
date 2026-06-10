@@ -518,9 +518,19 @@ test("Renderer logic: append_text reads from targetBinding, not binding", () => 
   const btnCode = src.slice(btnStart, btnEnd);
 
   // The append_text handler should resolve targetBinding value
+  // (append_text has targetBinding as required field, no fallback to binding needed)
   assert.ok(
-    btnCode.includes("localAction.targetBinding ?? binding"),
-    "append_text should fallback to binding if targetBinding is undefined",
+    btnCode.includes("localAction.targetBinding"),
+    "append_text should use targetBinding to resolve the target input",
+  );
+
+  // append_text must be handled BEFORE the binding check
+  // (since append_text has no binding field, it would be filtered out by `if (!binding) return`)
+  const appendIdx = btnCode.indexOf('"append_text"');
+  const bindingCheckIdx = btnCode.indexOf("const binding = localAction.binding");
+  assert.ok(
+    appendIdx < bindingCheckIdx,
+    "append_text handler must appear before the binding guard check",
   );
 });
 

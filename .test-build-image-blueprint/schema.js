@@ -3,7 +3,7 @@
 // AUIR Zod Schema — 运行时校验 + AI 模型输出合同
 // ============================================================
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.auirResponseSchema = exports.auirRequestSchema = exports.auirConstraintsSchema = exports.auirStateSchema = exports.auirDiagnosticsSchema = exports.auirToolRequestSchema = exports.auirToolDescriptorSchema = exports.auirMemoryPatchSchema = exports.userMemoryCandidateSchema = exports.jsonPatchOperationSchema = exports.auirMemorySchema = exports.retrievedUserMemorySchema = exports.auirAppDescriptorSchema = exports.auirSessionSchema = exports.auirEventSchema = exports.timerRefreshEventSchema = exports.runtimeCommandEventSchema = exports.modalCloseEventSchema = exports.tabChangeEventSchema = exports.formSubmitEventSchema = exports.componentCommitEventSchema = exports.componentClickEventSchema = exports.appSearchEventSchema = exports.clientSnapshotSchema = exports.localUIStateSchema = exports.uiNodeSchema = exports.externalLinkNodeSchema = exports.imageBlueprintSchema = exports.imageSlotPlanItemSchema = void 0;
+exports.auirResponseSchema = exports.auirRequestSchema = exports.auirConstraintsSchema = exports.auirStateSchema = exports.auirDiagnosticsSchema = exports.auirToolRequestSchema = exports.auirToolDescriptorSchema = exports.auirMemoryPatchSchema = exports.userMemoryCandidateSchema = exports.jsonPatchOperationSchema = exports.auirMemorySchema = exports.retrievedUserMemorySchema = exports.auirAppDescriptorSchema = exports.auirSessionSchema = exports.auirEventSchema = exports.timerRefreshEventSchema = exports.runtimeCommandEventSchema = exports.drawerCloseEventSchema = exports.modalCloseEventSchema = exports.tabChangeEventSchema = exports.formSubmitEventSchema = exports.componentCommitEventSchema = exports.componentClickEventSchema = exports.appSearchEventSchema = exports.clientSnapshotSchema = exports.localUIStateSchema = exports.uiNodeSchema = exports.externalLinkNodeSchema = exports.imageBlueprintSchema = exports.imageSlotPlanItemSchema = void 0;
 const zod_1 = require("zod");
 // -----------------------------------------------------------
 // 基础枚举
@@ -828,6 +828,13 @@ exports.modalCloseEventSchema = zod_1.z.object({
     target: zod_1.z.object({ id: zod_1.z.string(), closeIntent: zod_1.z.string().optional() }),
     clientSnapshot: exports.clientSnapshotSchema.optional(),
 });
+exports.drawerCloseEventSchema = zod_1.z.object({
+    eventId: zod_1.z.string(),
+    timestamp: zod_1.z.string(),
+    type: zod_1.z.literal("drawer.close"),
+    target: zod_1.z.object({ id: zod_1.z.string(), closeIntent: zod_1.z.string().optional() }),
+    clientSnapshot: exports.clientSnapshotSchema.optional(),
+});
 exports.runtimeCommandEventSchema = zod_1.z.object({
     eventId: zod_1.z.string(),
     timestamp: zod_1.z.string(),
@@ -851,6 +858,7 @@ exports.auirEventSchema = zod_1.z.discriminatedUnion("type", [
     exports.formSubmitEventSchema,
     exports.tabChangeEventSchema,
     exports.modalCloseEventSchema,
+    exports.drawerCloseEventSchema,
     exports.runtimeCommandEventSchema,
     exports.timerRefreshEventSchema,
 ]);

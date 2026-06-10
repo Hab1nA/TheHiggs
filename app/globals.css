@@ -17,3 +17,112 @@ body {
   background: var(--background);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* -----------------------------------------------------------
+   AUIR Transition Animations — 语义过渡动画
+   ----------------------------------------------------------- */
+
+@keyframes auir-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes auir-slide-left-in {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes auir-slide-right-in {
+  from {
+    opacity: 0;
+    transform: translateX(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes auir-slide-up-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes auir-scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes auir-pulse-subtle {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+@keyframes auir-number-morph {
+  0% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  50% {
+    transform: translateY(-4px);
+    opacity: 0.5;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* 将动画注册为 Tailwind 自定义动画 */
+@layer utilities {
+  .animate-fade-in {
+    animation: auir-fade-in 200ms ease-out both;
+  }
+  .animate-slide-left-in {
+    animation: auir-slide-left-in 150ms ease-out both;
+  }
+  .animate-slide-right-in {
+    animation: auir-slide-right-in 150ms ease-out both;
+  }
+  .animate-slide-up-in {
+    animation: auir-slide-up-in 150ms ease-out both;
+  }
+  .animate-scale-in {
+    animation: auir-scale-in 200ms ease-out both;
+  }
+  .animate-pulse-subtle {
+    animation: auir-pulse-subtle 500ms ease-in-out;
+  }
+  .animate-number-morph {
+    animation: auir-number-morph 300ms ease-out both;
+  }
+}

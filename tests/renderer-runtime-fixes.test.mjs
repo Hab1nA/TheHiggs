@@ -543,16 +543,16 @@ test("CP-2: postRuntimeLog checks response status", () => {
 
 // ─── CP-6: AI fallback uses 206 status ──────────────────────────────────────
 
-test("CP-6: /api/ai-ui returns 206 for simulated fallback responses", () => {
+test("CP-6: /api/ai-ui returns 206 for degraded fallback responses", () => {
   const src = readSrc("app/api/ai-ui/route.ts");
 
   assert.ok(
-    src.includes("isFallback ? 206 : 200"),
-    "Should return 206 for fallback responses",
+    src.includes("isDegraded ? 206 : 200"),
+    "Should return 206 for degraded responses",
   );
   assert.ok(
     src.includes("simulatedData === true"),
-    "Should check simulatedData to determine fallback status",
+    "Should check simulatedData to determine degradation status",
   );
 });
 

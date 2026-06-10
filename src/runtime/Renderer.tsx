@@ -1418,6 +1418,17 @@ function ButtonRender({ n, localState, setLocalValue, onAIEvent }: RProps) {
         return;
       }
 
+      // append_text 无 binding 字段，必须在 binding 检查之前处理
+      if (localAction.type === "append_text") {
+        const targetBinding = localAction.targetBinding;
+        if (!targetBinding) return;
+        const currentText = String(
+          resolveBindingValue(localState, targetBinding, ""),
+        );
+        setLocalValue(targetBinding, currentText + (localAction.text ?? ""));
+        return;
+      }
+
       const binding = localAction.binding;
       if (!binding) return;
       const current = Number(resolveBindingValue(localState, binding, 0));
@@ -1435,14 +1446,7 @@ function ButtonRender({ n, localState, setLocalValue, onAIEvent }: RProps) {
       else if (localAction.type === "set_value") next = localAction.value;
       else if (localAction.type === "toggle")
         next = !resolveBindingValue(localState, binding, false);
-      else if (localAction.type === "append_text") {
-        const targetBinding = localAction.targetBinding ?? binding;
-        const currentText = String(
-          resolveBindingValue(localState, targetBinding, ""),
-        );
-        setLocalValue(targetBinding, currentText + (localAction.text ?? ""));
-        return;
-      } else next = current;
+      else next = current;
       setLocalValue(binding, next);
     } else if (isAI) {
       import("./event").then(

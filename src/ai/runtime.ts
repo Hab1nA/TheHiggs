@@ -3,6 +3,7 @@
 // ============================================================
 
 import { beautifyLayout } from "@/auir/beautify";
+import { deterministicPostProcess } from "@/auir/deterministicPostProcess";
 import { createFallbackResponse, createLauncherState } from "@/auir/fallback";
 import type { AUIRRequest, AUIRResponse } from "@/auir/types";
 import { validateResponse } from "@/auir/validate";
@@ -256,6 +257,31 @@ export async function runAIRuntime(
           defaultDensity: "normal",
           defaultGap: "md",
         });
+        // Deterministic post-process: rule-based UI repair (< 5ms)
+        // Runs after beautify, before AI-based post-process (if enabled)
+        const dpResult = deterministicPostProcess(response.next.ui);
+        if (dpResult.fixCount > 0) {
+          console.log(
+            `[DeterministicPostProcess] Applied ${dpResult.fixCount} fix(es):`,
+            dpResult.fixes.map((f) => f.kind).join(", "),
+          );
+          await appendRuntimeLog({
+            type: "runtime.deterministic_post_process.applied",
+            pageLogId: pageLogContext?.pageLogId,
+            sessionId: request.session.sessionId,
+            turn: request.session.turn,
+            stage: "deterministic_post_process",
+            status: "success",
+            payload: {
+              fixCount: dpResult.fixCount,
+              fixes: dpResult.fixes.map((f) => ({
+                kind: f.kind,
+                nodeId: f.nodeId,
+                description: f.description,
+              })),
+            },
+          });
+        }
       }
     } else {
       console.warn(

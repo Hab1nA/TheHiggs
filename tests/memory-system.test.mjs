@@ -43,8 +43,8 @@ describe("Memory System — Source Verification", () => {
   it("page.tsx calls applyMemoryPatch when memoryPatch exists", () => {
     const src = readSrc("app/page.tsx");
     assert.ok(
-      src.includes("applyMemoryPatch(memory, response.memoryPatch)"),
-      "page.tsx should call applyMemoryPatch with memory and response.memoryPatch",
+      src.includes("applyMemoryPatch(latestMemory, response.memoryPatch)"),
+      "page.tsx should call applyMemoryPatch with latestMemory and response.memoryPatch",
     );
   });
 
@@ -175,7 +175,7 @@ describe("Memory System — Behavioral Verification", () => {
       "back_to_launcher should reset memory to initial state",
     );
     assert.ok(
-      handler.includes("_sessionId ="),
+      handler.includes("sessionIdRef.current ="),
       "back_to_launcher should generate a new session ID",
     );
     assert.ok(

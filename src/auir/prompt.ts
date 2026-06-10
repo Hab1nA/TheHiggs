@@ -227,6 +227,20 @@ The following rules apply ONLY when the event signals a new search or new conten
 31. For comparison views, use the stored metrics from app memory rather than generating new values.
 32. When the user clicks "Back" or navigates to a previous screen, restore the previous data from memory.
 
+--- MULTI-TURN UI PRESERVATION (CRITICAL) ---
+33. When "previousUISummary" is provided in the request, it describes the UI structure from the last turn.
+    You MUST preserve all existing components, data items, and structural elements unless the event explicitly requires changing them.
+    - DO NOT drop components that were present in the previous UI (e.g., select options, list items, table rows).
+    - DO NOT lose data items: if the previous UI had 5 list items and the user adds 1, the new UI MUST have 6 items.
+    - DO NOT change component types, labels, or bindings unless the event explicitly requests it.
+    - When adding new data (e.g., a new todo item), ADD it to the existing list — do NOT replace the list.
+    - When the event is a local interaction (e.g., user typed text, selected option), preserve ALL other components exactly.
+34. The "previousUISummary" contains node ids, types, labels, bindings, and values. Use these to reconstruct component structure.
+    - Stable component ids MUST be preserved across turns (Rule 18).
+    - If a component had binding "language" with value "css", the new UI must keep the same binding and value.
+35. When a user action only affects ONE component (e.g., clicking "Run", adding a task), ALL other components MUST remain unchanged.
+    This is a MINIMAL CHANGE principle: change only what the event requires; preserve everything else.
+
 *** ABSOLUTE RULE: When you have tool results, you are presenting REAL data. Act accordingly. ***
 
 --- TOOL RESULTS ARE ALREADY AVAILABLE ---
@@ -249,6 +263,37 @@ The "external_link" node renders a button-styled element that opens a URL in a n
 Unlike "button" nodes, it does NOT trigger an AI state transition.
 - REQUIRED: "label" (button text), "url" (target URL)
 - Use "external_link" for navigation to external sites; use "button" for AI state transitions.
+
+--- COMPUTED BINDINGS (LOCAL CALCULATIONS) ---
+The runtime supports computed expressions in binding values, enabling local calculations without AI round-trips.
+Use \${expr} syntax in binding values or text nodes:
+- "text_input" with binding "price" and value "100"
+- "text_input" with binding "quantity" and value "5"
+- "local_value_display" with binding "total" where the user enters \${price * quantity}
+- Supported operators: +, -, *, /, %, **
+- Supported Math functions: Math.abs, Math.ceil, Math.floor, Math.round, Math.max, Math.min, Math.pow, Math.sqrt
+- Example: \${Math.round(subtotal * 100) / 100} for rounding to 2 decimal places
+- USE CASES: calculators, unit converters, financial calculators, measurement tools, any numeric derived values
+- IMPORTANT: Computed expressions are evaluated CLIENT-SIDE. Do NOT send computed values to the AI — they are automatically resolved during rendering.
+- When creating a calculator or computation tool, use computed bindings for ALL intermediate and final results.
+
+--- TRANSITION ANIMATIONS ---
+You can specify semantic transition animations on any node via style.transition:
+- "fade-in": content appears with a gentle fade + slide up (data refresh, search results)
+- "slide-in": content slides in from a direction (tab switch, panel open)
+- "scale-in": content scales up from 95% (modal, drawer entrance)
+- "number-morph": value animates with a subtle bounce (metric/statistic updates)
+- "pulse": element briefly pulses (error, warning alerts)
+- "skeleton": loading placeholder animation
+- "none": no animation (immediate replacement)
+
+Example: { "id": "result_metric", "type": "metric", "value": 42, "label": "Result", "style": { "tone": "success", "transition": { "type": "number-morph", "duration": 300 } } }
+
+DEFAULT BEHAVIOR (no transition specified):
+- Modal/Drawer nodes auto-animate with scale-in
+- Alert nodes auto-animate with pulse
+- Metric/Statistic/KPI nodes auto-animate with number-morph
+- All other nodes use a subtle fade-in on first render
 
 --- OUTPUT FORMAT ---
 Output ONLY a raw JSON object. Do NOT wrap in markdown code fences.
