@@ -8,13 +8,7 @@ import type { AUIREvent } from "@/auir/types";
 import { postRuntimeLog } from "@/runtime/client";
 import { createAppSearchEvent } from "@/runtime/event";
 import type { PageLogContext } from "@/runtime/logging/types";
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type FormEvent,
-} from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 
 const EXAMPLES = [
   {
@@ -70,9 +64,12 @@ export default function SearchLauncher({
   const [showSettings, setShowSettings] = useState(false);
   const [refining, setRefining] = useState(false);
 
-  // Guard ref: prevents persist effects from overwriting localStorage with
-  // default `false` values before the restore effect has finished.
-  const restoredRef = useRef(false);
+  // Guard STATE (not ref): prevents persist effects from overwriting
+  // localStorage with default `false` values before the restore effect
+  // has taken effect. Using useState ensures the persist effects only
+  // fire on the re-render AFTER the restore setState has been applied,
+  // avoiding the ref-vs-batched-state timing race in React 19 StrictMode.
+  const [hasRestored, setHasRestored] = useState(false);
 
   // 从 localStorage 恢复 AI 模式开关状态（仅客户端，避免 SSR Hydration 不一致）
   useEffect(() => {
@@ -81,24 +78,22 @@ export default function SearchLauncher({
     setPostProcessMode(
       localStorage.getItem("thehiggs_postProcessMode") === "true",
     );
-    // Mark restore complete within the same effect batch.
-    // The persist effects below will see `true` and write correctly.
-    restoredRef.current = true;
+    setHasRestored(true);
   }, []);
 
   // 持久化 AI 模式开关状态到 localStorage（仅在 restore 完成后写入）
   useEffect(() => {
-    if (!restoredRef.current) return;
+    if (!hasRestored) return;
     localStorage.setItem("thehiggs_refineMode", String(refineMode));
-  }, [refineMode]);
+  }, [refineMode, hasRestored]);
   useEffect(() => {
-    if (!restoredRef.current) return;
+    if (!hasRestored) return;
     localStorage.setItem("thehiggs_thinkingMode", String(thinkingMode));
-  }, [thinkingMode]);
+  }, [thinkingMode, hasRestored]);
   useEffect(() => {
-    if (!restoredRef.current) return;
+    if (!hasRestored) return;
     localStorage.setItem("thehiggs_postProcessMode", String(postProcessMode));
-  }, [postProcessMode]);
+  }, [postProcessMode, hasRestored]);
 
   const handleSubmit = useCallback(
     async (e: FormEvent) => {
