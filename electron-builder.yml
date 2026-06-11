@@ -1,0 +1,64 @@
+# ============================================================
+# TheHiggs — Electron Builder 配置
+# ============================================================
+
+appId: com.thehiggs.runtime
+productName: TheHiggs
+copyright: Copyright © 2026 TheHiggs
+
+# ── 入口 ──────────────────────────────────────────────────────
+
+# package.json 中的 "main" 字段指向编译后的 Electron 主进程
+# 由 tsconfig.electron.json 编译输出到 dist-electron/
+
+# ── 文件包含 ──────────────────────────────────────────────────
+
+files:
+  - dist-electron/**/*
+  - package.json
+
+# ── 额外资源: Next.js standalone server ──────────────────────
+
+extraResources:
+  - from: ".next/standalone"
+    to: "next-app"
+    filter:
+      - "**/*"
+      - "!**/.env*"
+  - from: ".next/static"
+    to: "next-app/.next/static"
+
+# ── 平台配置 ──────────────────────────────────────────────────
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: null
+
+mac:
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+  icon: null
+
+linux:
+  target:
+    - target: AppImage
+      arch:
+        - x64
+  icon: null
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+
+# ── 构建目录 ──────────────────────────────────────────────────
+
+directories:
+  output: release

@@ -16,6 +16,8 @@ const eslintConfig = [
       ".test-build/**",
       ".test-build-*/**",
       "next-env.d.ts",
+      "electron/**",
+      "dist-electron/**",
     ],
   },
   ...compat.extends("next/core-web-vitals", "next/typescript"),

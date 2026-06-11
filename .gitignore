@@ -22,6 +22,10 @@
 .DS_Store
 *.pem
 
+# electron
+/dist-electron/
+/release/
+
 # debug
 npm-debug.log*
 yarn-debug.log*

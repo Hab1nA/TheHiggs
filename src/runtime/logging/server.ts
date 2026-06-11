@@ -2,13 +2,16 @@ import { appendFile, mkdir, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { sanitizeForRuntimeLog } from "./sanitize";
 import type {
-    PageLogContext,
-    RuntimeLogAppendInput,
-    RuntimeLogEvent,
-    RuntimeLogFileRecord,
+  PageLogContext,
+  RuntimeLogAppendInput,
+  RuntimeLogEvent,
+  RuntimeLogFileRecord,
 } from "./types";
 
-const LOG_DIR = join(process.cwd(), "runtime-logs");
+// LOG_DIR 优先使用环境变量 RUNTIME_LOG_DIR，
+// 兼容 Electron 打包后 process.cwd() 不再是项目根目录的场景。
+const LOG_DIR =
+  process.env.RUNTIME_LOG_DIR ?? join(process.cwd(), "runtime-logs");
 const fileCache = new Map<string, string>();
 
 export function isRuntimeLoggingEnabled(): boolean {
@@ -44,7 +47,9 @@ export async function appendRuntimeLog(
         initialQuery: "runtime-event",
       }));
     if (!filePath) {
-      console.warn(`[runtime-log] No page log file found for pageLogId=${event.pageLogId}; event type=${event.type} dropped`);
+      console.warn(
+        `[runtime-log] No page log file found for pageLogId=${event.pageLogId}; event type=${event.type} dropped`,
+      );
       return false;
     }
 
