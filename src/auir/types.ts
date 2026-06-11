@@ -1064,6 +1064,31 @@ export type TransitionPolicy = {
   allowMajorRedesignOnlyOn: string[];
 };
 
+/** 语义过渡动画类型 */
+export type TransitionType =
+  | "fade-in"
+  | "fade-out"
+  | "slide-in"
+  | "slide-out"
+  | "scale-in"
+  | "scale-out"
+  | "pulse"
+  | "skeleton"
+  | "number-morph"
+  | "none";
+
+/** 过渡动画方向（用于 slide 类型） */
+export type TransitionDirection = "left" | "right" | "up" | "down";
+
+/** 语义过渡动画配置 */
+export type TransitionConfig = {
+  type: TransitionType;
+  direction?: TransitionDirection;
+  duration?: number;
+  easing?: string;
+  delay?: number;
+};
+
 export type AUIRConstraints = {
   renderMode: "full_state";
   allowedComponents: string[];

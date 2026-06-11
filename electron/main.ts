@@ -4,7 +4,7 @@
 // 开发模式: 加载 http://localhost:3000 (需先运行 npm run dev)
 // 生产模式: 启动 Next.js standalone server，加载对应端口
 
-import { app, BrowserWindow, shell } from "electron";
+import { app, BrowserWindow, ipcMain, shell } from "electron";
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import net from "node:net";
@@ -178,6 +178,14 @@ function createWindow(port: number): void {
     minWidth: 800,
     minHeight: 600,
     title: "TheHiggs — AI-UI Co-Execution Runtime",
+    frame: false,
+    titleBarStyle: "hidden",
+    titleBarOverlay: {
+      color: "#09090b",
+      symbolColor: "#a3a3a3",
+      height: 36,
+    },
+    backgroundColor: "#09090b",
     webPreferences: {
       preload: join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -201,7 +209,37 @@ function createWindow(port: number): void {
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
+
+  // 向渲染进程发送最大化/还原事件
+  mainWindow.on("maximize", () => {
+    mainWindow?.webContents.send("window:maximized");
+  });
+  mainWindow.on("unmaximize", () => {
+    mainWindow?.webContents.send("window:unmaximized");
+  });
 }
+
+// ── IPC: 窗口控制 ────────────────────────────────────────────
+
+ipcMain.on("window:minimize", () => {
+  mainWindow?.minimize();
+});
+
+ipcMain.on("window:maximize", () => {
+  if (mainWindow?.isMaximized()) {
+    mainWindow.unmaximize();
+  } else {
+    mainWindow?.maximize();
+  }
+});
+
+ipcMain.on("window:close", () => {
+  mainWindow?.close();
+});
+
+ipcMain.handle("window:isMaximized", () => {
+  return mainWindow?.isMaximized() ?? false;
+});
 
 // ── 清理 ──────────────────────────────────────────────────────
 

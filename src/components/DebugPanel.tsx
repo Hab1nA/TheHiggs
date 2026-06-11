@@ -23,13 +23,15 @@ export default function DebugPanel({
   diagnostics?: Record<string, unknown>;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const [tab, setTab] = useState<"state" | "local" | "memory" | "diag">("state");
+  const [tab, setTab] = useState<"state" | "local" | "memory" | "diag">(
+    "state",
+  );
 
   if (!expanded) {
     return (
       <button
         onClick={() => setExpanded(true)}
-        className="fixed bottom-4 right-4 z-40 bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-xs text-neutral-400 hover:text-neutral-200 transition-colors"
+        className="fixed bottom-4 right-4 z-50 bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-xs text-neutral-400 hover:text-neutral-200 transition-colors shadow-lg"
       >
         Debug
       </button>
@@ -37,7 +39,7 @@ export default function DebugPanel({
   }
 
   return (
-    <div className="fixed bottom-4 right-4 z-40 bg-neutral-900 border border-neutral-700 rounded-xl w-96 max-h-[60vh] flex flex-col shadow-2xl">
+    <div className="fixed bottom-4 right-4 z-50 bg-neutral-900 border border-neutral-700 rounded-xl w-96 max-h-[60vh] flex flex-col shadow-2xl">
       <div className="flex items-center justify-between p-3 border-b border-neutral-800">
         <div className="flex gap-2">
           {(["state", "local", "memory", "diag"] as const).map((t) => (
@@ -63,7 +65,13 @@ export default function DebugPanel({
         </div>
         {tab === "state" && (
           <pre className="whitespace-pre-wrap text-neutral-300">
-            {state ? JSON.stringify({ app: state.app, memory: state.memory, uiNodeCount: "..." }, null, 2) : "null"}
+            {state
+              ? JSON.stringify(
+                  { app: state.app, memory: state.memory, uiNodeCount: "..." },
+                  null,
+                  2,
+                )
+              : "null"}
           </pre>
         )}
         {tab === "local" && (
@@ -78,7 +86,9 @@ export default function DebugPanel({
         )}
         {tab === "diag" && (
           <pre className="whitespace-pre-wrap text-neutral-300">
-            {diagnostics ? JSON.stringify(diagnostics, null, 2) : "No diagnostics"}
+            {diagnostics
+              ? JSON.stringify(diagnostics, null, 2)
+              : "No diagnostics"}
           </pre>
         )}
       </div>

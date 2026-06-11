@@ -11,6 +11,7 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "electron:dev": "tsc -p tsconfig.electron.json && electron .",
+    "electron:dev:all": "pwsh -ExecutionPolicy Bypass -File start-electron-dev.ps1",
     "electron:build": "npm run build && tsc -p tsconfig.electron.json && electron-builder --config electron-builder.yml"
   },
   "dependencies": {

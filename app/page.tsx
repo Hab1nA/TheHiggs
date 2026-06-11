@@ -19,6 +19,7 @@ import DebugPanel from "@/components/DebugPanel";
 import ErrorPanel from "@/components/ErrorPanel";
 import LoadingOverlay from "@/components/LoadingOverlay";
 import SearchLauncher from "@/components/SearchLauncher";
+import Shell from "@/components/Shell";
 import { postRuntimeLog, sendAUIRRequest } from "@/runtime/client";
 import type { PageLogContext } from "@/runtime/logging/types";
 import Renderer, { AppContextProvider } from "@/runtime/Renderer";
@@ -316,55 +317,52 @@ export default function Home() {
     }
   }, [handleAIEvent, handleRestart, lastEventRef]);
 
+  /** 计算 memory 序列化大小（bytes） */
+  const memorySize = JSON.stringify(memory).length;
+
+  /** 返回 Launcher 的事件构造器 */
+  const handleBackToLauncher = useCallback(() => {
+    void handleAIEvent({
+      eventId: `evt_restart_${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      type: "runtime.command",
+      command: "back_to_launcher",
+    });
+  }, [handleAIEvent]);
+
   return (
-    <>
+    <Shell
+      runtimeState={{
+        isLauncher,
+        appTitle: auirState?.app.title,
+        appDescription: auirState?.app.description,
+        turn,
+        sessionId: sessionIdRef.current,
+        loading,
+        memorySize,
+        simulatedData: diagnostics?.simulatedData === true,
+        diagnostics,
+        onBackToLauncher: handleBackToLauncher,
+      }}
+    >
       {loading && <LoadingOverlay />}
 
       {isLauncher ? (
         <SearchLauncher onSearch={handleAIEvent} disabled={loading} />
       ) : (
-        <div className="min-h-screen bg-neutral-950 text-neutral-100">
-          <div className="border-b border-neutral-800 px-6 py-3 flex items-center justify-between">
-            <div>
-              <h2 className="text-lg font-semibold">
-                {auirState?.app.title ?? "App"}
-              </h2>
-              {auirState?.app.description && (
-                <p className="text-xs text-neutral-500">
-                  {auirState.app.description}
-                </p>
-              )}
-            </div>
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() =>
-                  handleAIEvent({
-                    eventId: `evt_restart_${Date.now()}`,
-                    timestamp: new Date().toISOString(),
-                    type: "runtime.command",
-                    command: "back_to_launcher",
-                  })
-                }
-                className="px-3 py-1.5 text-xs rounded-lg bg-neutral-800 border border-neutral-700 text-neutral-400 hover:text-neutral-200 hover:bg-neutral-700 transition-colors"
-              >
-                ← Launcher
-              </button>
-            </div>
-          </div>
-          <div className="p-6">
-            <AppContextProvider
-              appId={auirState?.app.id}
-              appTitle={auirState?.app.title}
-              appKind={auirState?.app.kind}
-            >
-              <Renderer
-                node={auirState!.ui}
-                localState={localState}
-                setLocalValue={handleSetLocalValue}
-                onAIEvent={handleAIEvent}
-              />
-            </AppContextProvider>
-          </div>
+        <div className="p-6">
+          <AppContextProvider
+            appId={auirState?.app.id}
+            appTitle={auirState?.app.title}
+            appKind={auirState?.app.kind}
+          >
+            <Renderer
+              node={auirState!.ui}
+              localState={localState}
+              setLocalValue={handleSetLocalValue}
+              onAIEvent={handleAIEvent}
+            />
+          </AppContextProvider>
         </div>
       )}
 
@@ -379,6 +377,6 @@ export default function Home() {
         diagnostics={diagnostics}
       />
       <AUIRInspector state={auirState} />
-    </>
+    </Shell>
   );
 }

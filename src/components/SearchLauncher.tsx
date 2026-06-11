@@ -236,7 +236,7 @@ export default function SearchLauncher({
   ];
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[#070a10] text-neutral-100">
+    <div className="relative min-h-full overflow-hidden bg-[#070a10] text-neutral-100">
       <div className="absolute inset-0 bg-[linear-gradient(rgba(148,163,184,0.06)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.06)_1px,transparent_1px)] bg-[size:48px_48px]" />
       <div className="absolute inset-x-0 top-0 h-56 bg-[radial-gradient(ellipse_at_top,rgba(56,189,248,0.14),transparent_65%)]" />
 
