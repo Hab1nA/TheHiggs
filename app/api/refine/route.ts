@@ -66,7 +66,13 @@ export async function POST(req: Request): Promise<NextResponse> {
   }
 
   try {
+    const startedAt = Date.now();
+    console.log(`[API /api/refine] Refining query: "${parsed.data.query}"`);
     const result = await refineUserQuery(parsed.data.query, pageLogContext);
+    console.log(
+      `[API /api/refine] Refine complete (${Date.now() - startedAt}ms):`,
+      `kind=${result.appKind}, title="${result.appTitle}", features=${result.keyFeatures.length}`,
+    );
     return NextResponse.json({ ok: true, ...result });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";

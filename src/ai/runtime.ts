@@ -162,26 +162,27 @@ export async function runAIRuntime(
         },
       });
     } else {
-      // No pre-refined data — run refine on the backend
+      // No pre-refined data — run refine on the backend.
+      // refineUserQuery always returns a valid RefineOutput (LLM result,
+      // structured fallback, or minimal last-resort fallback).
       console.log(
         "[AI Runtime] Refine mode enabled — step 1: refining query...",
       );
-      try {
-        refineResult = await refineUserQuery(
-          request.event.query,
-          pageLogContext,
+      refineResult = await refineUserQuery(
+        request.event.query,
+        pageLogContext,
+        thinking,
+      );
+      const isDegraded = refineResult.appKind === "unknown";
+      console.log(
+        `[AI Runtime] Refine complete${isDegraded ? " (fallback/degraded)" : ""}:`,
+        `kind=${refineResult.appKind}, title="${refineResult.appTitle}", features=${refineResult.keyFeatures.length}`,
+      );
+      if (isDegraded) {
+        console.warn(
+          "[AI Runtime] ⚠️ Refine used fallback — LLM call may have failed. " +
+            "The generated UI will still work but may be less tailored to your query.",
         );
-        console.log(
-          "[AI Runtime] Refine complete:",
-          `kind=${refineResult.appKind}, title="${refineResult.appTitle}", features=${refineResult.keyFeatures.length}`,
-        );
-      } catch (err) {
-        console.error(
-          "[AI Runtime] Refine step failed, falling back to direct generation:",
-          err,
-        );
-        // Continue without refinement — graceful degradation
-        refineResult = undefined;
       }
     }
   }
@@ -364,6 +365,7 @@ export async function runAIRuntime(
         const step1Result = await polishOrConsistencyReview(
           step1Input,
           pageLogContext,
+          thinking,
         );
 
         // Determine which UI to pass to Step 2
@@ -389,6 +391,7 @@ export async function runAIRuntime(
         const step2Result = await functionalityReview(
           { ...step1Input, newUI: uiForStep2 },
           pageLogContext,
+          thinking,
         );
 
         // Determine final UI: Step 2 result > Step 1 result > original

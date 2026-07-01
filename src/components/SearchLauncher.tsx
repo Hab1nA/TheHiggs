@@ -130,6 +130,10 @@ export default function SearchLauncher({
           }
           const data = await res.json();
           if (data.ok) {
+            console.log(
+              "[SearchLauncher] Refine OK:",
+              `kind=${data.appKind}, title="${data.appTitle}"`,
+            );
             onSearch(
               createAppSearchEvent(trimmed, {
                 refine: true,
@@ -237,7 +241,7 @@ export default function SearchLauncher({
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-[#070a10] text-neutral-100">
-      <div className="absolute inset-0 bg-[linear-gradient(rgba(148,163,184,0.06)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.06)_1px,transparent_1px)] bg-[size:48px_48px]" />
+      <div className="absolute inset-0 bg-[linear-gradient(rgba(148,163,184,0.06)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.06)_1px,transparent_1px)] bg-size-[48px_48px]" />
       <div className="absolute inset-x-0 top-0 h-56 bg-[radial-gradient(ellipse_at_top,rgba(56,189,248,0.14),transparent_65%)]" />
 
       <main className="relative mx-auto grid min-h-screen w-full max-w-7xl grid-cols-1 gap-6 px-5 py-6 sm:px-8 lg:grid-cols-[minmax(0,1.06fr)_minmax(390px,0.94fr)] lg:items-center lg:gap-8 lg:py-10">
@@ -320,6 +324,7 @@ export default function SearchLauncher({
                   title="设置"
                 >
                   <svg
+                    suppressHydrationWarning
                     xmlns="http://www.w3.org/2000/svg"
                     width="16"
                     height="16"

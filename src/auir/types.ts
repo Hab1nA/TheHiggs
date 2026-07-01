@@ -106,6 +106,29 @@ export type NodeStyleTokens = {
   tone?: "default" | "muted" | "primary" | "success" | "warning" | "danger";
   density?: "compact" | "normal" | "spacious";
   emphasis?: "low" | "medium" | "high";
+  transition?: TransitionConfig;
+};
+
+export type TransitionDirection = "up" | "down" | "left" | "right";
+
+export type TransitionType =
+  | "fade-in"
+  | "fade-out"
+  | "slide-in"
+  | "slide-out"
+  | "scale-in"
+  | "scale-out"
+  | "number-morph"
+  | "pulse"
+  | "skeleton"
+  | "none";
+
+export type TransitionConfig = {
+  type: TransitionType;
+  direction?: TransitionDirection;
+  duration?: number;
+  easing?: "ease" | "ease-in" | "ease-out" | "ease-in-out" | "linear";
+  delay?: number;
 };
 
 export type InteractionMode = "local" | "ai_transition" | "hybrid";

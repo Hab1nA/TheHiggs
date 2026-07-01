@@ -93,30 +93,33 @@ const styleTokensSchema = objectOf({
   ]),
   density: stringEnum(["compact", "normal", "spacious"]),
   emphasis: stringEnum(["low", "medium", "high"]),
-  transition: objectOf({
-    type: stringEnum([
-      "fade-in",
-      "fade-out",
-      "slide-in",
-      "slide-out",
-      "scale-in",
-      "scale-out",
-      "number-morph",
-      "pulse",
-      "skeleton",
-      "none",
-    ]),
-    direction: stringEnum(["up", "down", "left", "right"]),
-    duration: numberSchema,
-    easing: stringEnum([
-      "ease",
-      "ease-in",
-      "ease-out",
-      "ease-in-out",
-      "linear",
-    ]),
-    delay: numberSchema,
-  }),
+  transition: objectOf(
+    {
+      type: stringEnum([
+        "fade-in",
+        "fade-out",
+        "slide-in",
+        "slide-out",
+        "scale-in",
+        "scale-out",
+        "number-morph",
+        "pulse",
+        "skeleton",
+        "none",
+      ]),
+      direction: stringEnum(["up", "down", "left", "right"]),
+      duration: numberSchema,
+      easing: stringEnum([
+        "ease",
+        "ease-in",
+        "ease-out",
+        "ease-in-out",
+        "linear",
+      ]),
+      delay: numberSchema,
+    },
+    ["type"],
+  ),
 });
 
 function baseProperties(type: string): Record<string, JsonSchema> {

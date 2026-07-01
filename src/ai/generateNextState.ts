@@ -78,8 +78,13 @@ const toolDecisionSchema = z
   .transform((val) => val as ToolDecision);
 
 /** 轻量级工具决策：判断是否需要联网/下载资源 */
-async function decideToolNeeds(request: AUIRRequest): Promise<ToolDecision> {
-  const model = getModel("disabled"); // 禁用 thinking 以提高 JSON 可靠性
+async function decideToolNeeds(
+  request: AUIRRequest,
+  thinking?: boolean,
+): Promise<ToolDecision> {
+  const model = getModel(
+    thinking === true ? "enabled" : thinking === false ? "disabled" : undefined,
+  );
   const pageLogContext = getPageLogContext(request);
 
   const systemPrompt = `You are a tool decision engine. Given a user request, decide if external tools are needed BEFORE generating a UI.
@@ -813,7 +818,7 @@ export async function generateNextAUIRState(
       },
     });
   } else {
-    decision = await decideToolNeeds(request);
+    decision = await decideToolNeeds(request, thinking);
   }
 
   let toolResults: ToolExecResult[] = [];

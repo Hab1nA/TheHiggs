@@ -33,8 +33,7 @@ const compressedMemorySchema = z
   })
   .refine(
     (data) =>
-      Object.keys(data.session).length > 0 ||
-      Object.keys(data.app).length > 0,
+      Object.keys(data.session).length > 0 || Object.keys(data.app).length > 0,
     {
       message:
         "Compressed memory must not be empty — at least session or app must have entries",
@@ -109,7 +108,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const model = getModel("disabled"); // no thinking for speed
+    const model = getModel("enabled"); // thinking enabled for better compression quality
     const memJson = JSON.stringify(
       { session: memory.session, app: memory.app },
       null,
@@ -165,7 +164,9 @@ function mockCompress(memory: {
         // Generate a descriptive summary based on the data shape
         const firstItem = value[0];
         const fieldNames =
-          firstItem && typeof firstItem === "object" && !Array.isArray(firstItem)
+          firstItem &&
+          typeof firstItem === "object" &&
+          !Array.isArray(firstItem)
             ? Object.keys(firstItem as Record<string, unknown>).join("/")
             : Array.isArray(firstItem)
               ? `${(firstItem as unknown[]).length} 个字段/行`

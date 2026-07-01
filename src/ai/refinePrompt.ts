@@ -104,6 +104,209 @@ const refineOutputSchema = z.object({
 
 export type RefineOutput = z.infer<typeof refineOutputSchema>;
 
+function inferAppKind(query: string): RefineOutput["appKind"] {
+  const normalized = query.toLowerCase();
+  if (/天气|weather|forecast|气象/.test(query)) return "dashboard";
+  if (/计算器|calculator|算/.test(query)) return "utility";
+  if (/项目|task|todo|计划|追踪|管理/.test(query)) return "productivity_tool";
+  if (/图表|数据|分析|dashboard|看板|metric|报表/.test(query)) {
+    return "dashboard";
+  }
+  if (/设计|创作|生成|写作|文案|story|小说|插画/.test(query)) {
+    return "creative_tool";
+  }
+  if (/开发|工程|代码|api|debug|测试|工具/.test(query)) {
+    return "engineering_tool";
+  }
+  if (normalized.includes("simulat") || /模拟|演示|仿真/.test(query)) {
+    return "simulation";
+  }
+  return "unknown";
+}
+
+function buildFallbackRefineOutput(query: string): RefineOutput {
+  const trimmed = query.trim() || "应用";
+  const appKind = inferAppKind(trimmed);
+  const titleBase = trimmed.length > 18 ? `${trimmed.slice(0, 18)}…` : trimmed;
+  const appTitle = `${titleBase} 细化版`;
+
+  const layoutByKind: Record<RefineOutput["appKind"], string> = {
+    utility:
+      "single-column workspace with a compact control panel and result area",
+    engineering_tool:
+      "split layout with editor-style controls on the left and output panels on the right",
+    creative_tool:
+      "hero section plus layered workspace with a preview canvas and settings sidebar",
+    productivity_tool:
+      "dashboard grid with a task summary header, main work area, and supporting sidebar",
+    simulation:
+      "split layout with parameter controls, live simulation stage, and results summary",
+    dashboard:
+      "dashboard grid with summary cards on top and detailed analytics sections below",
+    unknown:
+      "responsive split layout with a clear header, main content area, and supporting panels",
+  };
+
+  const featureByKind: Record<RefineOutput["appKind"], string[]> = {
+    utility: [
+      "输入参数并即时计算结果",
+      "显示清晰的结果卡片",
+      "保留历史记录",
+      "提供重置与复制操作",
+    ],
+    engineering_tool: [
+      "展示核心输入参数",
+      "提供可执行的操作按钮",
+      "显示结果与错误状态",
+      "支持调试/重试流程",
+    ],
+    creative_tool: [
+      "提供主题输入与风格选择",
+      "生成可预览的创作结果",
+      "支持局部调整",
+      "保存草稿与版本",
+    ],
+    productivity_tool: [
+      "展示任务概览",
+      "支持快速筛选和状态切换",
+      "显示优先级与截止时间",
+      "提供新增与归档操作",
+    ],
+    simulation: [
+      "配置模拟参数",
+      "运行并观察变化",
+      "展示关键指标",
+      "支持暂停、重置和对比",
+    ],
+    dashboard: [
+      "展示核心指标",
+      "提供趋势分析",
+      "支持筛选和切换视图",
+      "显示明细列表",
+    ],
+    unknown: [
+      "展示主要目标",
+      "提供基础交互控件",
+      "显示结果摘要",
+      "支持重试和重置",
+    ],
+  };
+
+  const componentByKind: Record<RefineOutput["appKind"], string[]> = {
+    utility: [
+      "heading",
+      "text_input",
+      "number_input",
+      "button",
+      "metric",
+      "card",
+    ],
+    engineering_tool: [
+      "heading",
+      "textarea",
+      "button",
+      "card",
+      "code_block",
+      "alert",
+    ],
+    creative_tool: ["heading", "select", "textarea", "button", "image", "card"],
+    productivity_tool: [
+      "heading",
+      "select",
+      "checkbox",
+      "button",
+      "table",
+      "timeline",
+    ],
+    simulation: [
+      "heading",
+      "slider",
+      "select",
+      "button",
+      "metric",
+      "chart_line",
+    ],
+    dashboard: [
+      "heading",
+      "metric",
+      "chart_bar",
+      "chart_line",
+      "table",
+      "card",
+    ],
+    unknown: ["heading", "text", "button", "card", "table", "metric"],
+  };
+
+  const modulePrefix = appKind === "unknown" ? "generic" : appKind;
+  const uiModules: RefineOutput["uiModules"] = [
+    {
+      moduleId: `${modulePrefix}_mod_1`,
+      purpose: "展示应用标题、目标和关键摘要信息",
+      suggestedComponent: "card",
+      contentSpec: `显示“${trimmed}”的核心目标、使用场景和一段简短说明。`,
+    },
+    {
+      moduleId: `${modulePrefix}_mod_2`,
+      purpose: "提供主要交互和参数配置入口",
+      suggestedComponent: componentByKind[appKind][1] ?? "button",
+      contentSpec:
+        "包含最重要的输入项、筛选项或操作按钮，用户可以在此调整主要参数。",
+    },
+    {
+      moduleId: `${modulePrefix}_mod_3`,
+      purpose: "展示结果、趋势或辅助信息",
+      suggestedComponent: componentByKind[appKind][4] ?? "table",
+      contentSpec:
+        "展示计算结果、统计摘要、趋势信息或明细内容，并保留状态反馈。",
+    },
+  ];
+
+  const parsed = refineOutputSchema.safeParse({
+    refinedPrompt: `用户想要一个围绕"${trimmed}"的完整应用。请生成一个结构清晰、交互完整、视觉层次明确的界面。优先使用模块化布局，将页面拆成标题区、核心操作区和结果展示区。确保控件命名直观、状态反馈清楚，并且为用户保留重置、切换和查看明细的能力。`,
+    appKind,
+    appTitle,
+    appDescription: `为"${trimmed}"构建的细化应用说明，强调清晰布局、可操作性和结果可读性。`,
+    keyFeatures: featureByKind[appKind],
+    suggestedLayout: layoutByKind[appKind],
+    suggestedComponents: componentByKind[appKind],
+    uiModules,
+  });
+
+  if (!parsed.success) {
+    console.error(
+      "[buildFallbackRefineOutput] Schema validation failed:",
+      parsed.error.issues,
+    );
+    throw new Error(
+      `Fallback refine output failed schema validation: ${parsed.error.message}`,
+    );
+  }
+
+  return parsed.data;
+}
+
+/** Last-resort minimal refine output when even the fallback fails */
+function buildMinimalRefineOutput(query: string): RefineOutput {
+  const trimmed = query.trim() || "应用";
+  return {
+    refinedPrompt: `用户想要一个关于"${trimmed}"的应用。请生成一个结构清晰的界面。`,
+    appKind: "unknown" as const,
+    appTitle: `${trimmed.length > 18 ? `${trimmed.slice(0, 18)}…` : trimmed} 应用`,
+    appDescription: `为"${trimmed}"构建的应用。`,
+    keyFeatures: ["展示主要目标", "提供基础交互控件", "显示结果摘要"],
+    suggestedLayout: "single column with header and main content area",
+    suggestedComponents: ["heading", "text", "button", "card"],
+    uiModules: [
+      {
+        moduleId: "generic_mod_1",
+        purpose: "展示应用标题和核心内容",
+        suggestedComponent: "card",
+        contentSpec: `显示"${trimmed}"的核心内容。`,
+      },
+    ],
+  };
+}
+
 /** Refinement system prompt */
 function buildRefineSystemPrompt(): string {
   return `You are a prompt refinement engine for an AI-UI co-execution system.
@@ -157,8 +360,11 @@ Output ONLY valid JSON conforming to the schema.`;
 export async function refineUserQuery(
   query: string,
   pageLogContext?: PageLogContext,
+  thinking?: boolean,
 ): Promise<RefineOutput> {
-  const model = getModel();
+  const model = getModel(
+    thinking === true ? "enabled" : thinking === false ? "disabled" : undefined,
+  );
   const systemPrompt = buildRefineSystemPrompt();
 
   const promptObj = {
@@ -178,6 +384,9 @@ export async function refineUserQuery(
       mode: "json",
       temperature: 0.6,
       maxTokens: 8000,
+      // Retry on schema mismatch — LLM output quality is non-deterministic
+      // and a single retry often produces valid JSON.
+      maxRetries: 2,
     });
 
     await appendRuntimeLog({
@@ -191,7 +400,12 @@ export async function refineUserQuery(
         request: {
           system: systemPrompt,
           prompt: promptObj,
-          options: { mode: "json", temperature: 0.6, maxTokens: 8000 },
+          options: {
+            mode: "json",
+            temperature: 0.6,
+            maxTokens: 8000,
+            maxRetries: 2,
+          },
         },
         response: result.object,
       },
@@ -199,6 +413,9 @@ export async function refineUserQuery(
 
     return result.object;
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error("[refineUserQuery] LLM refine failed:", errorMessage);
+
     await appendRuntimeLog({
       type: "ai.exchange",
       pageLogId: pageLogContext?.pageLogId,
@@ -210,12 +427,39 @@ export async function refineUserQuery(
         request: {
           system: systemPrompt,
           prompt: promptObj,
-          options: { mode: "json", temperature: 0.6, maxTokens: 8000 },
+          options: {
+            mode: "json",
+            temperature: 0.6,
+            maxTokens: 8000,
+            maxRetries: 2,
+          },
         },
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage,
       },
     });
-    throw error;
+
+    // Build fallback — wrap in its own try-catch so that a Zod validation
+    // failure in the fallback path cannot propagate up to the API route
+    // handler (which would cause a 500 instead of a graceful 200+fallback).
+    try {
+      const fallback = buildFallbackRefineOutput(query);
+      console.log(
+        "[refineUserQuery] Using fallback refine output:",
+        `kind=${fallback.appKind}, title="${fallback.appTitle}"`,
+      );
+      return fallback;
+    } catch (fallbackError) {
+      const fallbackMessage =
+        fallbackError instanceof Error
+          ? fallbackError.message
+          : String(fallbackError);
+      console.error(
+        "[refineUserQuery] Fallback build also failed:",
+        fallbackMessage,
+      );
+      // Last-resort: return a minimal valid RefineOutput
+      return buildMinimalRefineOutput(query);
+    }
   }
 }
 

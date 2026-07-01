@@ -85,8 +85,11 @@ async function runReviewAI(
   stage: "visual_polish" | "consistency_review" | "functionality_review",
   maxTokens: number,
   pageLogContext?: PageLogContext,
+  thinking?: boolean,
 ): Promise<PostProcessOutput> {
-  const model = getModel("disabled"); // 关闭 thinking 提高 JSON 可靠性
+  const model = getModel(
+    thinking === true ? "enabled" : thinking === false ? "disabled" : undefined,
+  );
 
   if (!input.newUI || typeof input.newUI !== "object") {
     return {
@@ -648,6 +651,7 @@ ${newTruncated}
 export async function polishOrConsistencyReview(
   input: PostProcessInput,
   pageLogContext?: PageLogContext,
+  thinking?: boolean,
 ): Promise<PostProcessOutput> {
   const isFirstGeneration = input.previousUI === null;
 
@@ -660,6 +664,7 @@ export async function polishOrConsistencyReview(
       "visual_polish",
       16000, // 首次生成内容量大，需要更多空间
       pageLogContext,
+      thinking,
     );
   }
 
@@ -673,6 +678,7 @@ export async function polishOrConsistencyReview(
     "consistency_review",
     12000,
     pageLogContext,
+    thinking,
   );
 }
 
@@ -687,6 +693,7 @@ export async function polishOrConsistencyReview(
 export async function functionalityReview(
   input: PostProcessInput,
   pageLogContext?: PageLogContext,
+  thinking?: boolean,
 ): Promise<PostProcessOutput> {
   console.log("[PostProcess:Step2] Mode: Functionality Audit");
   return runReviewAI(
@@ -696,5 +703,6 @@ export async function functionalityReview(
     "functionality_review",
     10000,
     pageLogContext,
+    thinking,
   );
 }

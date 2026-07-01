@@ -248,13 +248,16 @@ test("runtime.ts still imports refineUserQuery and RefineOutput", () => {
 test("runtime.ts still has graceful degradation on refine failure", () => {
   const src = readSrc("src/ai/runtime.ts");
 
+  // refineUserQuery now always returns a valid RefineOutput (never throws).
+  // Degradation is handled via fallback detection (appKind === "unknown")
+  // rather than try-catch with refineResult = undefined.
   assert.ok(
-    src.includes("Refine step failed, falling back to direct generation"),
-    "Should still have graceful degradation message",
+    src.includes("fallback/degraded"),
+    "Should detect fallback/degraded refine results",
   );
   assert.ok(
-    src.includes("refineResult = undefined"),
-    "Should set refineResult to undefined on failure",
+    src.includes("Refine used fallback"),
+    "Should warn when refine used fallback",
   );
 });
 
@@ -290,7 +293,7 @@ test("generateNextAUIRState falls back to AI-driven tool decision when uiModules
   const src = readSrc("src/ai/generateNextState.ts");
 
   assert.ok(
-    src.includes("decideToolNeeds(request)"),
+    src.includes("decideToolNeeds(request"),
     "Should fall back to decideToolNeeds when no framework plan",
   );
 });
