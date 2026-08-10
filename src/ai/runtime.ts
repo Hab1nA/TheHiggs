@@ -114,6 +114,10 @@ export async function runAIRuntime(
     payload: { mode: "real" },
   });
 
+  // Determine thinking mode from event before any AI pipeline stage uses it.
+  const thinking =
+    request.event.type === "app.search" ? request.event.thinking : undefined;
+
   // Check if refine mode is requested (two-step AI pipeline)
   // The frontend SearchLauncher calls POST /api/refine first, then embeds
   // the result in the event as refinedPrompt + refinedContext. When those
@@ -187,9 +191,6 @@ export async function runAIRuntime(
     }
   }
 
-  // Determine thinking mode from event
-  const thinking =
-    request.event.type === "app.search" ? request.event.thinking : undefined;
   if (thinking !== undefined) {
     console.log(
       `[AI Runtime] Thinking mode: ${thinking ? "enabled" : "disabled"}`,
