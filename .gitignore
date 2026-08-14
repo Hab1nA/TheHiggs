@@ -28,13 +28,20 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files
+# env files — 所有环境文件均含密钥，一律不追踪（仅保留 .env.example 模板）
 .env
-.env*.local
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.*
+!.env.example
+
+# secrets — 密钥/证书文件
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.secret
+id_rsa*
+id_ed25519*
 
 # vercel
 .vercel

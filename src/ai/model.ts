@@ -51,7 +51,7 @@ export function getModel(thinking?: "enabled" | "disabled"): LanguageModelV1 {
 
   const provider = createOpenAI({
     apiKey: process.env.OPENAI_API_KEY ?? "",
-    baseURL: process.env.OPENAI_BASE_URL ?? "https://cf.api.fan/v1",
+    baseURL: process.env.OPENAI_BASE_URL ?? "https://opencode.ai/zen/go/v1",
     fetch: customFetch,
   });
 
