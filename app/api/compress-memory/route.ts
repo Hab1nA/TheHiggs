@@ -12,9 +12,6 @@ import { z } from "zod";
 
 export const runtime = "nodejs";
 
-/** 前端序列化 memory 后超过此阈值（字符数）触发压缩 */
-const COMPRESS_THRESHOLD = 8000;
-
 const compressRequestSchema = z.object({
   memory: z.object({
     turn: z.record(z.string(), z.unknown()),

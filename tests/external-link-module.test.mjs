@@ -153,21 +153,24 @@ test("Schema: external_link node with variant passes", () => {
 
 test("Schema: external_link node without variant passes (optional)", () => {
   const { externalLinkNodeSchema } = schemaModule;
-  const { variant: _, ...noVariant } = validExternalLinkNode();
+  const noVariant = { ...validExternalLinkNode() };
+  delete noVariant.variant;
   const result = externalLinkNodeSchema.safeParse(noVariant);
   assert.equal(result.success, true, "Missing variant should pass");
 });
 
 test("Schema: external_link node without label fails", () => {
   const { externalLinkNodeSchema } = schemaModule;
-  const { label: _, ...noLabel } = validExternalLinkNode();
+  const noLabel = { ...validExternalLinkNode() };
+  delete noLabel.label;
   const result = externalLinkNodeSchema.safeParse(noLabel);
   assert.equal(result.success, false, "Missing label should fail");
 });
 
 test("Schema: external_link node without url fails", () => {
   const { externalLinkNodeSchema } = schemaModule;
-  const { url: _, ...noUrl } = validExternalLinkNode();
+  const noUrl = { ...validExternalLinkNode() };
+  delete noUrl.url;
   const result = externalLinkNodeSchema.safeParse(noUrl);
   assert.equal(result.success, false, "Missing url should fail");
 });

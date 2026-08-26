@@ -42,7 +42,7 @@ function resolveThinkingMode(): string | null {
  *   - undefined   使用 DEEPSEEK_THINKING 环境变量（默认）
  */
 export function getModel(thinking?: "enabled" | "disabled"): LanguageModelV1 {
-  const modelName = process.env.AI_MODEL ?? "deepseek-v4-flash";
+  const modelName = process.env.AI_MODEL ?? "deepseek-v4-flash-vision-exp";
 
   // Per-request thinking overrides env var
   const thinkingType = thinking ?? resolveThinkingMode();
@@ -51,7 +51,7 @@ export function getModel(thinking?: "enabled" | "disabled"): LanguageModelV1 {
 
   const provider = createOpenAI({
     apiKey: process.env.OPENAI_API_KEY ?? "",
-    baseURL: process.env.OPENAI_BASE_URL ?? "https://opencode.ai/zen/go/v1",
+    baseURL: process.env.OPENAI_BASE_URL ?? "https://api.deepseek.com",
     fetch: customFetch,
   });
 

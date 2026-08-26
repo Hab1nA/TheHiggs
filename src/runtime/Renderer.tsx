@@ -1953,7 +1953,7 @@ function StepperRender({ n, localState, setLocalValue, onAIEvent }: RProps) {
       interactionMode: interaction?.mode,
     });
     fireCommit(nxt);
-  }, [n, safe, step, setLocalValue, binding, fireCommit]);
+  }, [n, safe, step, setLocalValue, binding, fireCommit, interaction?.mode]);
   const dec = useCallback(() => {
     const nxt = Math.max(Number(n.min ?? -Infinity), safe - step);
     setLocalValue(binding, nxt, {
@@ -1963,7 +1963,7 @@ function StepperRender({ n, localState, setLocalValue, onAIEvent }: RProps) {
       interactionMode: interaction?.mode,
     });
     fireCommit(nxt);
-  }, [n, safe, step, setLocalValue, binding, fireCommit]);
+  }, [n, safe, step, setLocalValue, binding, fireCommit, interaction?.mode]);
   return (
     <div className="flex flex-col gap-1">
       {n.label ? (
@@ -2467,6 +2467,8 @@ function CardRender({ n, localState, setLocalValue, onAIEvent }: RProps) {
               src.startsWith("http://") ||
               src.startsWith("/");
             return isValid ? (
+              // Dynamic/data URLs cannot use next/image without configuring every runtime source.
+              // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={src}
                 alt=""
