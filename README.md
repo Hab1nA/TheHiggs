@@ -54,14 +54,15 @@ AI_MODEL=gpt-4.1                   # 可选：模型选择
 USE_MOCK_AI=false                   # false=真实AI, true=Mock模式
 ```
 
-## OrcaRouter（可选）
+## OrcaRouter（可选服务商）
 
-[OrcaRouter](https://www.orcarouter.ai/) 是一个 OpenAI 兼容的 AI 网关：200+ 模型、按请求难度自动路由（`orcarouter/auto`）、$0 加价。本项目基于 Vercel AI SDK 调用模型，切换模型来源只需改环境变量，**无需改代码**：
+[OrcaRouter](https://www.orcarouter.ai/) 是一个 OpenAI 兼容的 AI 网关：200+ 模型、按请求难度自动路由（`orcarouter/auto`）、$0 加价。本项目在 `src/ai/model.ts` 中将其注册为可选服务商，切换只需改环境变量，**无需改代码**：
 
 ```env
 # 注册并创建 Key: https://www.orcarouter.ai/ref/ref_c2667d797b82b3181496
-OPENAI_API_KEY=sk-orca-your-key-here
-OPENAI_BASE_URL=https://api.orcarouter.ai/v1
+AI_PROVIDER=orcarouter
+ORCAROUTER_API_KEY=sk-orca-your-key-here
+ORCAROUTER_BASE_URL=https://api.orcarouter.ai/v1
 
 # 显式指定模型（默认 orcarouter/auto 自动路由）
 # AI_MODEL=orcarouter/auto
