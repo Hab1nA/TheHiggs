@@ -1,5 +1,7 @@
 # TheHiggs — LLM-Driven Semantic UI Runtime
 
+[![Powered by OrcaRouter](https://img.shields.io/badge/Powered_by-OrcaRouter-2563eb)](https://www.orcarouter.ai/ref/ref_c2667d797b82b3181496)
+
 一个类似 VibeOS 概念的技术演示项目。**应用不再由静态业务代码定义，而由 AI 驱动的结构化 UI 协议、事件协议和记忆系统共同定义。**
 
 ## 核心思想
@@ -26,14 +28,14 @@
 
 ## 技术栈
 
-| 层级 | 技术 | 职责 |
-|------|------|------|
-| 前端宿主 | Next.js 15 App Router | 路由、渲染、API Route |
-| 语言 | TypeScript (strict) | 全栈类型安全 |
-| UI 样式 | Tailwind CSS 4 | 语义 token 驱动样式 |
-| 模型调用 | Vercel AI SDK (`ai` + `@ai-sdk/openai`) | generateObject、streaming |
-| 结构化校验 | Zod | AI 输出合同、API 入参校验 |
-| Agentic Frontend | CopilotKit (可选占位) | 调试面板、shared state |
+| 层级             | 技术                                    | 职责                      |
+| ---------------- | --------------------------------------- | ------------------------- |
+| 前端宿主         | Next.js 15 App Router                   | 路由、渲染、API Route     |
+| 语言             | TypeScript (strict)                     | 全栈类型安全              |
+| UI 样式          | Tailwind CSS 4                          | 语义 token 驱动样式       |
+| 模型调用         | Vercel AI SDK (`ai` + `@ai-sdk/openai`) | generateObject、streaming |
+| 结构化校验       | Zod                                     | AI 输出合同、API 入参校验 |
+| Agentic Frontend | CopilotKit (可选占位)                   | 调试面板、shared state    |
 
 ## 快速开始
 
@@ -52,16 +54,32 @@ AI_MODEL=gpt-4.1                   # 可选：模型选择
 USE_MOCK_AI=false                   # false=真实AI, true=Mock模式
 ```
 
+## OrcaRouter（可选）
+
+[OrcaRouter](https://www.orcarouter.ai/) 是一个 OpenAI 兼容的 AI 网关：200+ 模型、按请求难度自动路由（`orcarouter/auto`）、$0 加价。本项目基于 Vercel AI SDK 调用模型，切换模型来源只需改环境变量，**无需改代码**：
+
+```env
+# 注册并创建 Key: https://www.orcarouter.ai/ref/ref_c2667d797b82b3181496
+OPENAI_API_KEY=sk-orca-your-key-here
+OPENAI_BASE_URL=https://api.orcarouter.ai/v1
+
+# 显式指定模型（默认 orcarouter/auto 自动路由）
+# AI_MODEL=orcarouter/auto
+# AI_MODEL=deepseek/deepseek-v4-flash-vision-exp
+# AI_MODEL=qwen/qwen3.8-flash
+```
+
+
 ## AUIR 协议
 
 AUIR (AI User Interface Runtime) 由四部分组成：
 
-| 部分 | 说明 |
-|------|------|
-| **UI Description Language** | 29 种节点类型：layout、composition、content、input、runtime |
-| **UI Event Language** | 7 种结构化事件：app.search、component.click、component.commit 等 |
-| **UI Memory Language** | Turn / Session / App / User 四级记忆系统 |
-| **Runtime Control Language** | 安全约束、组件白名单、布局策略、交互策略 |
+| 部分                         | 说明                                                             |
+| ---------------------------- | ---------------------------------------------------------------- |
+| **UI Description Language**  | 29 种节点类型：layout、composition、content、input、runtime      |
+| **UI Event Language**        | 7 种结构化事件：app.search、component.click、component.commit 等 |
+| **UI Memory Language**       | Turn / Session / App / User 四级记忆系统                         |
+| **Runtime Control Language** | 安全约束、组件白名单、布局策略、交互策略                         |
 
 ### 当前支持的 UI 组件
 
@@ -81,6 +99,7 @@ AUIR (AI User Interface Runtime) 由四部分组成：
 ### CopilotKit 的可选作用
 
 第一版不强制 CopilotKit。保留 `src/copilot/` 占位，后续可用于：
+
 - 调试用 side panel / chat surface
 - `useCopilotReadable` 暴露当前 AUIR state
 - `useCopilotAction` 注册安全 frontend actions
@@ -97,13 +116,13 @@ AUIR (AI User Interface Runtime) 由四部分组成：
 
 ## 后续路线
 
-| 版本 | 目标 |
-|------|------|
-| v0.2 | Streaming UI（`streamObject`） |
-| v0.3 | Patch 模式（JSON Patch / partial node replacement） |
-| v0.4 | Tool Runtime（安全计算器、chart 生成器、领域估算器） |
+| 版本 | 目标                                                          |
+| ---- | ------------------------------------------------------------- |
+| v0.2 | Streaming UI（`streamObject`）                                |
+| v0.3 | Patch 模式（JSON Patch / partial node replacement）           |
+| v0.4 | Tool Runtime（安全计算器、chart 生成器、领域估算器）          |
 | v0.5 | CopilotKit 深度接入（side copilot、human-in-the-loop、AG-UI） |
-| v0.6 | Electron 桌面壳 |
+| v0.6 | Electron 桌面壳                                               |
 
 ## 项目状态
 
