@@ -70,7 +70,6 @@ ORCAROUTER_BASE_URL=https://api.orcarouter.ai/v1
 # AI_MODEL=qwen/qwen3.8-flash
 ```
 
-
 ## AUIR 协议
 
 AUIR (AI User Interface Runtime) 由四部分组成：

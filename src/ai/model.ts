@@ -73,7 +73,8 @@ export function resolveProviderConfig(): AIProviderConfig {
       id: "orcarouter",
       name: "OrcaRouter",
       baseUrl: ORCAROUTER_BASE_URL,
-      apiKey: process.env.ORCAROUTER_API_KEY ?? process.env.OPENAI_API_KEY ?? "",
+      apiKey:
+        process.env.ORCAROUTER_API_KEY ?? process.env.OPENAI_API_KEY ?? "",
       defaultModel: "orcarouter/auto",
     };
   }
@@ -127,4 +128,3 @@ export function hasApiKey(): boolean {
 export function isMockMode(): boolean {
   return process.env.USE_MOCK_AI === "true" || !hasApiKey();
 }
-
